@@ -1,38 +1,59 @@
+"use client";
+
+import { useState } from "react";
 import TopBar from "@/components/layout/TopBar";
+import TradingViewWidget from "@/components/trading/TradingViewWidget";
+import OrderForm from "@/components/trading/OrderForm";
+import TradeCounter from "@/components/trading/TradeCounter";
+import PositionsTable from "@/components/trading/PositionsTable";
 
 export default function TradingPage() {
+  const [symbol, setSymbol] = useState("FX:EURUSD");
+
+  function handleSymbolChange(instrument: string) {
+    // Map instrument to TradingView symbol format
+    const tvSymbol = instrument === "XAUUSD"
+      ? "OANDA:XAUUSD"
+      : `FX:${instrument}`;
+    setSymbol(tvSymbol);
+  }
+
   return (
-    <>
+    <div className="flex flex-col h-full overflow-hidden">
       <TopBar title="Trading" />
-      <main className="flex-1 overflow-hidden flex">
-        {/* TradingView Chart placeholder */}
-        <div className="flex-1 bg-bg border-r border-border flex items-center justify-center text-text-disabled text-sm">
-          TradingView Widget — Coming soon
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Chart */}
+        <div className="flex-1 bg-bg overflow-hidden">
+          <TradingViewWidget symbol={symbol} />
         </div>
 
-        {/* Order panel */}
-        <div className="w-80 flex flex-col overflow-y-auto bg-surface p-4 gap-4">
-          <div className="card p-4">
-            <p className="text-xs text-text-secondary mb-3">New Order</p>
-            <div className="h-64 flex items-center justify-center text-text-disabled text-sm">
-              Order form — Coming soon
+        {/* Right panel */}
+        <div className="w-80 flex flex-col overflow-y-auto bg-surface border-l border-border shrink-0">
+          <div className="p-4 flex flex-col gap-4">
+            {/* Trade counter */}
+            <TradeCounter used={0} max={3} />
+
+            {/* Order form */}
+            <div className="card p-4">
+              <p className="text-xs text-text-secondary mb-4 font-medium uppercase tracking-wide">
+                Nueva Orden
+              </p>
+              <OrderForm
+                onSymbolChange={handleSymbolChange}
+                tradesUsed={0}
+                maxTrades={3}
+                newsBlock={null}
+              />
             </div>
           </div>
-          <div className="card p-4">
-            <p className="text-xs text-text-secondary mb-2">Trade Counter</p>
-            <p className="text-2xl font-mono font-medium text-text-primary">0 / 3</p>
-            <p className="text-xs text-text-disabled mt-1">trades today</p>
-          </div>
-        </div>
-      </main>
-
-      {/* Positions table */}
-      <div className="h-48 border-t border-border bg-surface p-4 shrink-0">
-        <p className="text-xs text-text-secondary mb-2">Positions</p>
-        <div className="flex items-center justify-center h-28 text-text-disabled text-sm">
-          No open positions
         </div>
       </div>
-    </>
+
+      {/* Positions table */}
+      <div className="h-52 border-t border-border bg-surface shrink-0">
+        <PositionsTable />
+      </div>
+    </div>
   );
 }
