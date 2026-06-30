@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Copy, Check, Wifi, WifiOff, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useAccountStore } from "@/store/account";
 import { cn } from "@/lib/cn";
 
 type SyncStatus = "connected" | "never" | "stale";
@@ -21,6 +22,7 @@ export default function MT5ConnectionCard() {
   const supabase = useMemo(() => createClient(), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
+  const { activeAccountId } = useAccountStore();
 
   const [token, setToken]           = useState<string | null>(null);
   const [lastSync, setLastSync]     = useState<string | null>(null);
@@ -34,21 +36,21 @@ export default function MT5ConnectionCard() {
     : "/api/mt5/webhook";
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data?.user) { setLoading(false); return; }
-      const { data: acc } = await db
-        .from("accounts")
-        .select("webhook_token, last_synced_at")
-        .eq("user_id", data.user.id)
-        .eq("is_active", true)
-        .single();
-      if (acc) {
-        setToken(acc.webhook_token);
-        setLastSync(acc.last_synced_at);
-      }
-      setLoading(false);
-    });
-  }, [supabase, db]);
+    if (!activeAccountId) { setLoading(false); return; }
+    setLoading(true);
+    db
+      .from("accounts")
+      .select("webhook_token, last_synced_at")
+      .eq("id", activeAccountId)
+      .single()
+      .then(({ data: acc }: { data: { webhook_token: string; last_synced_at: string | null } | null }) => {
+        if (acc) {
+          setToken(acc.webhook_token);
+          setLastSync(acc.last_synced_at);
+        }
+        setLoading(false);
+      });
+  }, [db, activeAccountId]);
 
   function copy(text: string, which: "token" | "url") {
     navigator.clipboard.writeText(text).then(() => {

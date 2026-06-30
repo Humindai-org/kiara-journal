@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import { createClient } from "@/lib/supabase/client";
+import { useAccountStore } from "@/store/account";
 
 type Trade = {
   id: string;
@@ -107,22 +108,27 @@ function DisciplineGauge({ rate }: { rate: number }) {
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeAccountId, accounts } = useAccountStore();
+  const account = accounts.find(a => a.id === activeAccountId) ?? null;
+  const initialBalance = account?.initial_balance ?? INITIAL_BALANCE;
+
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data?.user) { setLoading(false); return; }
-      const { data: rows } = await supabase
-        .from("trades")
-        .select("id, instrument, direction, net_pnl, return_r, open_time, session, followed_plan")
-        .eq("user_id", data.user.id)
-        .not("net_pnl", "is", null)
-        .order("open_time", { ascending: true });
-      setTrades((rows as unknown as Trade[]) ?? []);
-      setLoading(false);
-    });
-  }, [supabase]);
+    if (!activeAccountId) { setLoading(false); return; }
+    setLoading(true);
+    supabase
+      .from("trades")
+      .select("id, instrument, direction, net_pnl, return_r, open_time, session, followed_plan")
+      .eq("account_id", activeAccountId)
+      .not("net_pnl", "is", null)
+      .order("open_time", { ascending: true })
+      .then(({ data: rows }) => {
+        setTrades((rows as unknown as Trade[]) ?? []);
+        setLoading(false);
+      });
+  }, [supabase, activeAccountId]);
 
   const stats = useMemo(() => {
     const closed = trades.filter(t => t.net_pnl != null);
@@ -139,7 +145,7 @@ export default function DashboardPage() {
     const avgR = rValues.length > 0 ? rValues.reduce((s, r) => s + r, 0) / rValues.length : 0;
     const expectancy = closed.length > 0 ? totalPnl / closed.length : 0;
 
-    let running = INITIAL_BALANCE, peak = INITIAL_BALANCE, maxDD = 0;
+    let running = initialBalance, peak = initialBalance, maxDD = 0;
     const equity = closed.map((t) => {
       running += t.net_pnl ?? 0;
       if (running > peak) peak = running;
@@ -169,7 +175,7 @@ export default function DashboardPage() {
       .map(([name, pnl]) => ({ name, pnl: parseFloat(pnl.toFixed(2)) }))
       .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
 
-    const balance = INITIAL_BALANCE + totalPnl;
+    const balance = initialBalance + totalPnl;
     const progressToTarget = Math.max(0, Math.min(100, (totalPnl / PROFIT_TARGET) * 100));
 
     return {
@@ -178,7 +184,7 @@ export default function DashboardPage() {
       equity, maxDD, balance, disciplineRate, evaluatedCount: evaluated.length,
       sessionData, instrData, progressToTarget,
     };
-  }, [trades]);
+  }, [trades, initialBalance]);
 
   if (loading) {
     return (
@@ -200,7 +206,7 @@ export default function DashboardPage() {
 
         {/* ── KPI row ───────────────────────────────────── */}
         <div className="grid grid-cols-5 gap-4">
-          <KpiCard label="Balance" value={`$${fmtUsd(stats.balance)}`} sub="TTP CFD Prime $100K" icon={Activity} />
+          <KpiCard label="Balance" value={`$${fmtUsd(stats.balance)}`} sub={account?.name ?? "—"} icon={Activity} />
           <KpiCard
             label="P&L total" value={`$${fmtUsd(stats.totalPnl, true)}`}
             sub={`${stats.tradeCount} trades cerrados`}
