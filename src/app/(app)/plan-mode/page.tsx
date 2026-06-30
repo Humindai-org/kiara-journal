@@ -467,9 +467,10 @@ interface ModelCardManagerProps {
   items: RuleItem[];
   onChange: (items: RuleItem[]) => void;
   editMode: boolean;
+  onModelToggle?: (id: string) => void;
 }
 
-function ModelCardManager({ items, onChange, editMode }: ModelCardManagerProps) {
+function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCardManagerProps) {
   const [newLabel, setNewLabel] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -478,11 +479,10 @@ function ModelCardManager({ items, onChange, editMode }: ModelCardManagerProps) 
   const canEdit = editMode || localEditMode;
 
   function toggle(id: string) {
+    if (onModelToggle) { onModelToggle(id); return; }
     onChange(items.map((i) => i.id === id ? { ...i, enabled: !i.enabled } : i));
   }
-  function remove(id: string) {
-    onChange(items.filter((i) => i.id !== id));
-  }
+  function remove(id: string) { onChange(items.filter((i) => i.id !== id)); }
   function commitEdit(id: string) {
     const trimmed = draft.trim();
     if (trimmed) onChange(items.map((i) => i.id === id ? { ...i, label: trimmed } : i));
@@ -504,10 +504,10 @@ function ModelCardManager({ items, onChange, editMode }: ModelCardManagerProps) 
 
   return (
     <div className="space-y-3">
-      {/* Section header with edit toggle */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-text-disabled uppercase tracking-wider font-semibold">
-          {items.filter(i => i.enabled).length}/{items.length} activos
+          {items.filter(i => i.enabled).length}/{items.length} activos — toca para activar/desactivar
         </p>
         <button
           type="button"
@@ -520,78 +520,55 @@ function ModelCardManager({ items, onChange, editMode }: ModelCardManagerProps) 
           )}
         >
           <Pencil className="size-2.5" />
-          {localEditMode ? "Listo" : "Editar"}
+          {localEditMode ? "Listo" : "Editar modelos"}
         </button>
       </div>
 
       {items.length === 0 && (
         <p className="text-xs text-text-disabled text-center py-6">Sin modelos — agrega uno abajo</p>
       )}
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {items.map((item) => {
           const acronym = getModelAcronym(item.label);
           const restIdx = item.label.indexOf(" — ");
-          const name = restIdx >= 0 ? item.label.slice(restIdx + 3).split(":")[0] : "";
+          const name = restIdx >= 0 ? item.label.slice(restIdx + 3).split(":")[0].trim() : "";
 
           if (editing === item.id) {
             return (
-              <div key={item.id} className="rounded-xl border border-accent/40 bg-surface-2 p-3 space-y-2">
+              <div key={item.id} className="rounded-xl border border-accent/40 bg-surface-2 p-3">
                 <input autoFocus value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") commitEdit(item.id); if (e.key === "Escape") setEditing(null); }}
                   onBlur={() => commitEdit(item.id)}
-                  className="w-full bg-surface border border-accent rounded-md px-2 py-1 text-xs text-text-primary focus:outline-none" />
+                  placeholder="Nombre del modelo..."
+                  className="w-full bg-surface border border-accent rounded-md px-2 py-1.5 text-xs text-text-primary focus:outline-none" />
+                <p className="text-[10px] text-text-disabled mt-1.5">Enter para guardar · Esc para cancelar</p>
               </div>
             );
           }
 
           return (
-            <div key={item.id} className="relative">
-              {/* Edit controls — always visible when editing */}
-              {canEdit && (
-                <div className="absolute -top-2 -right-2 z-10 flex gap-1">
-                  <label
-                    htmlFor={`img-upload-${item.id}`}
-                    className="size-5 rounded-full bg-surface-2 border border-border text-text-disabled hover:text-info flex items-center justify-center transition-colors cursor-pointer"
-                    title="Subir imagen del chart"
-                  >
-                    <ImagePlus className="size-2.5" />
-                  </label>
-                  <input
-                    id={`img-upload-${item.id}`}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(item.id, f); e.target.value = ""; }}
-                  />
-                  {item.image && (
-                    <button type="button"
-                      onClick={() => onChange(items.map(i => i.id === item.id ? { ...i, image: undefined } : i))}
-                      className="size-5 rounded-full bg-surface-2 border border-border text-text-disabled hover:text-warning flex items-center justify-center transition-colors"
-                      title="Quitar imagen">
-                      <X className="size-2.5" />
-                    </button>
-                  )}
-                  <button type="button" onClick={() => { setEditing(item.id); setDraft(item.label); }}
-                    className="size-5 rounded-full bg-surface-2 border border-border text-text-disabled hover:text-accent flex items-center justify-center transition-colors">
-                    <Pencil className="size-2.5" />
-                  </button>
-                  <button type="button" onClick={() => remove(item.id)}
-                    className="size-5 rounded-full bg-surface-2 border border-border text-text-disabled hover:text-loss flex items-center justify-center transition-colors">
-                    <X className="size-3" />
-                  </button>
-                </div>
-              )}
-              <button type="button" onClick={() => toggle(item.id)}
+            <div key={item.id} className={cn(
+              "rounded-xl border overflow-hidden transition-all",
+              item.enabled
+                ? "border-accent/50 bg-[#1e1940] shadow-[0_4px_0_#5b45a8,0_0_20px_rgba(157,139,255,0.15)]"
+                : "border-border bg-surface-2 shadow-[0_4px_0_#13111e]"
+            )}>
+              {/* Toggle area — entire top section is clickable */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => toggle(item.id)}
+                onKeyDown={(e) => e.key === "Enter" && toggle(item.id)}
                 className={cn(
-                  "w-full rounded-xl border p-3 text-left transition-all cursor-pointer active:scale-95",
-                  item.enabled
-                    ? "border-accent/50 bg-[#1e1940] shadow-[0_4px_0_#5b45a8,0_0_20px_rgba(157,139,255,0.15)]"
-                    : "border-border bg-surface-2 shadow-[0_4px_0_#13111e] opacity-60"
-                )}>
+                  "w-full p-3 text-left cursor-pointer select-none transition-opacity active:scale-95",
+                  !item.enabled && "opacity-60"
+                )}
+              >
                 {/* Chart area: image or SVG */}
                 {item.image ? (
-                  <div className="relative w-full mb-2 rounded-lg overflow-hidden" style={{ height: 38 }}>
+                  <div className="relative w-full mb-2 rounded-lg overflow-hidden" style={{ height: 44 }}>
                     <img src={item.image} alt="" className="w-full h-full object-cover"
                       style={{ filter: "brightness(0.72) saturate(1.4) contrast(1.05)" }} />
                     <div className="absolute inset-0 rounded-lg" style={{ background: "rgba(157,139,255,0.10)" }} />
@@ -615,15 +592,43 @@ function ModelCardManager({ items, onChange, editMode }: ModelCardManagerProps) 
                 )}
                 <p className={cn("text-sm font-black font-mono tracking-tight",
                   item.enabled ? "text-accent" : "text-text-disabled")}>{acronym}</p>
-                {name && <p className={cn("text-[10px] mt-0.5 leading-snug",
+                {name && <p className={cn("text-[10px] mt-0.5 leading-snug truncate",
                   item.enabled ? "text-text-secondary" : "text-text-disabled")}>{name}</p>}
                 {item.enabled && (
-                  <div className="mt-2 flex items-center gap-1">
+                  <div className="mt-1.5 flex items-center gap-1">
                     <div className="size-1.5 rounded-full bg-profit animate-pulse" />
                     <span className="text-[9px] text-profit font-semibold tracking-wider">ACTIVO</span>
                   </div>
                 )}
-              </button>
+              </div>
+
+              {/* Edit controls bar — only in edit mode */}
+              {canEdit && (
+                <div className="border-t border-border/60 grid grid-cols-3 divide-x divide-border/60">
+                  <label
+                    htmlFor={`img-${item.id}`}
+                    className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 cursor-pointer transition-colors"
+                    title="Subir imagen del chart"
+                  >
+                    <ImagePlus className="size-3" />
+                    <span className="text-[8px]">{item.image ? "Cambiar" : "Imagen"}</span>
+                    <input id={`img-${item.id}`} type="file" accept="image/*" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(item.id, f); e.target.value = ""; }} />
+                  </label>
+                  <button type="button"
+                    onClick={() => { setEditing(item.id); setDraft(item.label); }}
+                    className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 transition-colors">
+                    <Pencil className="size-3" />
+                    <span className="text-[8px]">Nombre</span>
+                  </button>
+                  <button type="button"
+                    onClick={() => remove(item.id)}
+                    className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-loss hover:bg-loss/5 transition-colors">
+                    <Trash2 className="size-3" />
+                    <span className="text-[8px]">Borrar</span>
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -769,6 +774,25 @@ export default function PlanModePage() {
       toast.success("Plan marcado como revisado");
     } catch { toast.error("Error al marcar como revisado"); }
     finally { setIsMarkingReviewed(false); }
+  }
+
+  async function toggleModelEnabled(id: string) {
+    const updated = form.model_items.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m);
+    set("model_items", updated);
+    if (userId && selectedId && !isNew) {
+      try {
+        await db.from("plans").update({ entry_models: updated }).eq("id", selectedId);
+      } catch { /* silent — main save will catch it */ }
+    }
+  }
+
+  async function updateModelItems(items: RuleItem[]) {
+    set("model_items", items);
+    if (userId && selectedId && !isNew) {
+      try {
+        await db.from("plans").update({ entry_models: items }).eq("id", selectedId);
+      } catch { /* silent */ }
+    }
   }
 
   const selectedPlan   = plans.find((p) => p.id === selectedId);
@@ -929,7 +953,7 @@ export default function PlanModePage() {
                   key={item.id}
                   item={item}
                   active={i === 0 && item.enabled}
-                  onToggle={() => set("model_items", form.model_items.map(m => m.id === item.id ? { ...m, enabled: !m.enabled } : m))}
+                  onToggle={() => toggleModelEnabled(item.id)}
                 />
               ))}
             </div>
@@ -1223,8 +1247,9 @@ export default function PlanModePage() {
                     <div className="card p-4">
                       <ModelCardManager
                         items={form.model_items}
-                        onChange={(items) => set("model_items", items)}
+                        onChange={updateModelItems}
                         editMode={editMode}
+                        onModelToggle={toggleModelEnabled}
                       />
                     </div>
                     <div>
