@@ -9,7 +9,7 @@ export type Json =
 export type TradeDirection = "LONG" | "SHORT";
 export type TradeSession = "TOKYO" | "LONDON" | "NEW_YORK" | "OVERLAP";
 export type TradeSource = "MT5" | "MANUAL";
-export type AccountType = "MT5" | "MANUAL";
+export type AccountType = "MT5" | "BITGET" | "BYBIT" | "BINANCE" | "MANUAL";
 export type NewsImpact = "HIGH" | "MEDIUM" | "LOW";
 export type NotebookCategory =
   | "PLANNED_TEMPLATE"
@@ -40,9 +40,11 @@ export interface Database {
           current_balance: number;
           is_active: boolean;
           mt5_server: string | null;
+          webhook_token: string;
+          last_synced_at: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["accounts"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["accounts"]["Row"], "id" | "created_at" | "webhook_token">;
         Update: Partial<Database["public"]["Tables"]["accounts"]["Insert"]>;
       };
       trades: {
@@ -104,6 +106,12 @@ export interface Database {
           trading_notes: string | null;
           last_reviewed_at: string | null;
           created_at: string;
+          updated_at: string | null;
+          trading_window_start: string | null;
+          trading_window_end: string | null;
+          min_confluences: number | null;
+          max_consecutive_losses: number | null;
+          notes_items: Json | null;
         };
         Insert: Omit<Database["public"]["Tables"]["plans"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["plans"]["Insert"]>;

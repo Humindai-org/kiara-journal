@@ -8,6 +8,7 @@ import TradeCounter from "@/components/trading/TradeCounter";
 import DailyPnLBar from "@/components/trading/DailyPnLBar";
 import SessionIndicator from "@/components/trading/SessionIndicator";
 import PositionsTable from "@/components/trading/PositionsTable";
+import MT5ConnectionCard from "@/components/trading/MT5ConnectionCard";
 
 export default function TradingPage() {
   const [symbol, setSymbol] = useState("FX:EURUSD");
@@ -63,6 +64,9 @@ export default function TradingPage() {
                 newsBlock={null}
               />
             </div>
+
+            {/* MT5 connection */}
+            <MT5ConnectionCard />
 
           </div>
         </div>

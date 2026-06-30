@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Check, LogOut } from "lucide-react";
+import { ChevronDown, Check, LogOut, Settings, Plus } from "lucide-react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
 import { cn } from "@/lib/cn";
@@ -75,32 +76,49 @@ export default function AccountSelector() {
           <ChevronDown className="size-3 text-text-secondary shrink-0" />
         </button>
 
-        {open && accounts.length > 0 && (
+        {open && (
           <div className="absolute right-0 top-full mt-1 w-64 bg-surface-2 border border-border rounded-lg shadow-lg z-50 py-1">
-            {accounts.map((acc) => (
-              <button
-                key={acc.id}
-                onClick={() => {
-                  setActiveAccount(acc.id);
-                  setOpen(false);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-surface transition-colors text-left"
+            {accounts.map((acc) => {
+              const pnl = acc.current_balance - acc.initial_balance;
+              return (
+                <button
+                  key={acc.id}
+                  onClick={() => { setActiveAccount(acc.id); setOpen(false); }}
+                  className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-surface transition-colors text-left"
+                >
+                  <span className="flex flex-col leading-tight">
+                    <span className="text-xs font-medium text-text-primary">{acc.name}</span>
+                    <span className="text-xs font-mono flex items-center gap-1.5">
+                      <span className="text-text-secondary">
+                        ${acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className={pnl >= 0 ? "text-profit" : "text-loss"}>
+                        ({pnl >= 0 ? "+" : ""}{pnl.toFixed(0)})
+                      </span>
+                    </span>
+                  </span>
+                  {acc.id === activeAccountId && <Check className="size-3 text-accent shrink-0" />}
+                </button>
+              );
+            })}
+            <div className="border-t border-border mt-1 pt-1">
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface transition-colors text-xs text-text-secondary hover:text-text-primary"
               >
-                <span className="flex flex-col leading-tight">
-                  <span className="text-xs font-medium text-text-primary">
-                    {acc.name}
-                  </span>
-                  <span className="text-xs text-text-secondary font-mono">
-                    ${acc.current_balance.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </span>
-                {acc.id === activeAccountId && (
-                  <Check className="size-3 text-accent shrink-0" />
-                )}
-              </button>
-            ))}
+                <Plus className="size-3.5" />
+                Agregar cuenta
+              </Link>
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface transition-colors text-xs text-text-secondary hover:text-text-primary"
+              >
+                <Settings className="size-3.5" />
+                Gestionar cuentas
+              </Link>
+            </div>
           </div>
         )}
       </div>

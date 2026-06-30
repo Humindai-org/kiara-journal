@@ -1,42 +1,129 @@
 @import "tailwindcss";
 
-/* ─── Soft Dusk Design Tokens ─────────────────────────────── */
+/* ─── Premium Dusk Design Tokens ──────────────────────────── */
 :root {
-  --color-bg:             #1c1928;
-  --color-surface:        #252235;
-  --color-surface-2:      #2e2a44;
-  --color-border:         #342f4a;
-  --color-accent:         #a78bfa;
-  --color-accent-dim:     #7c5fd4;
-  --color-accent-glow:    #a78bfa22;
-  --color-profit:         #34d399;
-  --color-loss:           #f87171;
+  /* Elevation scale — each step is clearly distinct in luminosity
+     so background → containers → inputs → highlights read apart. */
+  --color-bg:             #14121f;  /* app background (content area) */
+  --color-sidebar:        #100e18;  /* darker than bg → depth */
+  --color-surface:        #1f1c2e;  /* cards */
+  --color-surface-2:      #262237;  /* default input / hover surface */
+  --color-surface-light:  #221e32;  /* elevated card / left rail */
+  --color-surface-hi:     #2b2740;  /* form inputs */
+  --color-surface-hover:  #332e4b;  /* input hover */
+
+  /* Borders as low-opacity white — softer, more premium than solid */
+  --color-border:         rgba(255, 255, 255, 0.06);
+  --color-border-light:   rgba(255, 255, 255, 0.10);
+
+  /* Accent — lavender drives every active / selected / focus state */
+  --color-accent:         #9d8bff;
+  --color-accent-dim:     #7c5cff;
+  --color-accent-glow:    rgba(157, 139, 255, 0.14);
+  --color-accent-soft:    rgba(157, 139, 255, 0.18);
+  --color-action:         #9d8bff;
+  --color-action-hover:   #ae9eff;
+
+  /* Semantic — green reserved for gains, rose for losses */
+  --color-profit:         #44e4b2;
+  --color-loss:           #ff6b8a;
   --color-warning:        #fbbf24;
   --color-info:           #60a5fa;
-  --color-text-primary:   #ede9ff;
-  --color-text-secondary: #8b87a8;
-  --color-text-disabled:  #5a5670;
+
+  --color-text-primary:   #ffffff;
+  --color-text-secondary: #b4aecf;
+  --color-text-muted:     #a9a2c9;  /* section titles */
+  --color-text-disabled:  #7f789b;
+
+  /* Layered card shadows — tinted, low opacity */
+  --shadow-card:
+    0 2px 10px rgba(0, 0, 0, 0.15),
+    0 12px 40px rgba(0, 0, 0, 0.20);
 }
 
 /* ─── Tailwind v4 Theme Tokens ────────────────────────────── */
 @theme inline {
   --color-bg:             var(--color-bg);
+  --color-sidebar:        var(--color-sidebar);
   --color-surface:        var(--color-surface);
   --color-surface-2:      var(--color-surface-2);
+  --color-surface-light:  var(--color-surface-light);
+  --color-surface-hi:     var(--color-surface-hi);
+  --color-surface-hover:  var(--color-surface-hover);
   --color-border:         var(--color-border);
+  --color-border-light:   var(--color-border-light);
   --color-accent:         var(--color-accent);
   --color-accent-dim:     var(--color-accent-dim);
   --color-accent-glow:    var(--color-accent-glow);
+  --color-accent-soft:    var(--color-accent-soft);
+  --color-action:         var(--color-action);
+  --color-action-hover:   var(--color-action-hover);
   --color-profit:         var(--color-profit);
   --color-loss:           var(--color-loss);
   --color-warning:        var(--color-warning);
   --color-info:           var(--color-info);
   --color-text-primary:   var(--color-text-primary);
   --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted:     var(--color-text-muted);
   --color-text-disabled:  var(--color-text-disabled);
 
-  --font-sans: var(--font-inter), 'Inter', sans-serif;
+  --font-sans: var(--font-jakarta), 'Plus Jakarta Sans', sans-serif;
   --font-mono: var(--font-jetbrains), 'JetBrains Mono', monospace;
+}
+
+/* ─── Components ───────────────────────────────────────────── */
+@layer components {
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+  }
+  /* Lighter elevated card for highlighted zones */
+  .card-light {
+    background-color: var(--color-surface-light);
+    border: 1px solid var(--color-border-light);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Section heading — premium dashboard style */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  /* Neutral selectable chip (emotions, tags…) */
+  .chip {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--color-text-secondary);
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .chip:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-primary);
+  }
+  .chip-selected {
+    background-color: var(--color-accent-soft);
+    border: 1px solid var(--color-accent);
+    color: #ffffff;
+  }
+
+  /* Primary action button — lavender, clearly the CTA */
+  .btn-action {
+    background-color: var(--color-action);
+    color: var(--color-bg);
+    font-weight: 600;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+    box-shadow: 0 4px 14px -2px var(--color-accent-glow);
+  }
+  .btn-action:hover { background-color: var(--color-action-hover); }
+  .btn-action:active { transform: translateY(1px); }
+  .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 /* ─── Base ────────────────────────────────────────────────── */
@@ -51,14 +138,20 @@ body {
   line-height: 1.6;
 }
 
+/* Tabular figures so stacked numbers share one width */
+.tabular-nums,
+.font-mono {
+  font-feature-settings: "tnum";
+}
+
 /* ─── Scrollbars ──────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
+  background-color: var(--color-border-light);
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover { background-color: var(--color-surface-2); }
+::-webkit-scrollbar-thumb:hover { background-color: var(--color-surface-hi); }
 
 /* ─── Focus ───────────────────────────────────────────────── */
 :focus-visible {

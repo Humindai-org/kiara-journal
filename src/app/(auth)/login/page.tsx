@@ -9,6 +9,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +27,22 @@ export default function LoginPage() {
     }
 
     window.location.href = "/dashboard";
+  }
+
+  async function handleReset() {
+    if (!email.trim()) {
+      setError("Ingresa tu email primero para recuperar la contraseña.");
+      return;
+    }
+    setResetLoading(true);
+    setError("");
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://kiara-journal.vercel.app/update-password",
+    });
+    setResetLoading(false);
+    if (error) { setError(error.message); return; }
+    setResetSent(true);
   }
 
   return (
@@ -84,12 +102,27 @@ export default function LoginPage() {
             </p>
           )}
 
+          {resetSent && (
+            <p className="text-xs text-profit bg-[#0f2b1a] border border-profit/20 rounded-lg px-3 py-2">
+              Te enviamos un email de recuperación. Revisá tu bandeja (y spam).
+            </p>
+          )}
+
           <button
             type="submit"
             disabled={loading}
             className="w-full py-2.5 rounded-lg bg-accent text-bg text-sm font-medium hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Entrando…" : "Entrar"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={resetLoading || resetSent}
+            className="w-full text-xs text-text-disabled hover:text-text-secondary transition-colors disabled:opacity-40"
+          >
+            {resetLoading ? "Enviando…" : "¿Olvidaste tu contraseña?"}
           </button>
         </form>
       </div>

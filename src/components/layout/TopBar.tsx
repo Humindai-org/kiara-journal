@@ -7,7 +7,7 @@ interface TopBarProps {
 
 export default function TopBar({ title }: TopBarProps) {
   return (
-    <header className="h-14 flex items-center justify-between px-6 border-b border-border bg-surface shrink-0">
+    <header className="h-14 flex items-center justify-between px-6 border-b border-border bg-[rgba(20,18,31,0.75)] backdrop-blur-md shrink-0">
       {title && (
         <h1 className="text-sm font-medium text-text-primary">{title}</h1>
       )}

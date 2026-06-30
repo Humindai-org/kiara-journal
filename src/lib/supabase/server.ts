@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase";
 
@@ -49,5 +50,14 @@ export async function createServiceClient() {
         },
       },
     }
+  );
+}
+
+// Para webhooks externos (EA de MT5) — sin contexto de cookie/sesión.
+// Usa service role para bypassear RLS e identificar la cuenta por webhook_token.
+export function createWebhookClient() {
+  return createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 }

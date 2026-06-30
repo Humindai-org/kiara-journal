@@ -12,6 +12,7 @@ import {
   NotebookPen,
   ChevronLeft,
   ChevronRight,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useState } from "react";
@@ -23,7 +24,8 @@ const navItems = [
   { href: "/journal", label: "Journal", icon: BookOpen },
   { href: "/notebook", label: "Notebook", icon: NotebookPen },
   { href: "/news", label: "News", icon: Newspaper },
-  { href: "/ai-bot", label: "AI Bot", icon: Bot },
+  { href: "/ai-bot",   label: "AI Bot",   icon: Bot      },
+  { href: "/settings", label: "Cuentas",  icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -33,7 +35,7 @@ export default function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex flex-col h-full bg-surface border-r border-border transition-[width] duration-200 shrink-0",
+        "flex flex-col h-full bg-sidebar border-r border-border transition-[width] duration-200 shrink-0",
         collapsed ? "w-14" : "w-52"
       )}
     >
