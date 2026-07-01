@@ -391,19 +391,17 @@ export default function PositionsTable() {
       {pnlPopup && (() => {
         const t = pnlPopup;
         // For MT5 trades: fees = commission + swap (combined in DB)
-        // so commission = fees - swap to avoid double-counting.
-        // For MANUAL trades: fees = commission only.
-        const swap       = t.swap ?? 0;
-        const commission = t.source === "MT5"
+        // so charges = fees - swap to avoid double-counting.
+        // For MANUAL trades: fees = charges only.
+        const swap    = t.swap ?? 0;
+        const charges = t.source === "MT5"
           ? (t.fees ?? 0) - swap
           : (t.fees ?? 0);
-        const hasSwap   = swap !== 0;
-        const hasFees   = commission !== 0;
-        const hasCosts  = hasSwap || hasFees;
+        const hasCosts = swap !== 0 || charges !== 0;
 
         // Expected net from components (should equal t.net_pnl ± MT5 rounding)
         const componentSum = parseFloat(
-          ((t.gross_pnl ?? 0) + swap + commission).toFixed(2)
+          ((t.gross_pnl ?? 0) + swap + charges).toFixed(2)
         );
         const roundingDiff = t.net_pnl != null
           ? parseFloat(Math.abs(t.net_pnl - componentSum).toFixed(2))
@@ -459,32 +457,36 @@ export default function PositionsTable() {
               </div>
 
               {/* Breakdown */}
-              {(t.gross_pnl != null || hasCosts) && (
+              {t.gross_pnl != null && (
                 <div className="space-y-2 border-t border-border pt-3">
-                  {t.gross_pnl != null && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-secondary">Bruto</span>
-                      <span className={cn("font-mono", t.gross_pnl >= 0 ? "text-profit" : "text-loss")}>
-                        {t.gross_pnl >= 0 ? "+" : ""}${t.gross_pnl.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  {hasSwap && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-secondary">Swap</span>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-text-secondary">Bruto</span>
+                    <span className={cn("font-mono", t.gross_pnl >= 0 ? "text-profit" : "text-loss")}>
+                      {t.gross_pnl >= 0 ? "+" : ""}${t.gross_pnl.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-xs">
+                    <span className="text-text-secondary">Swap</span>
+                    {swap !== 0 ? (
                       <span className={cn("font-mono", swap >= 0 ? "text-profit" : "text-loss")}>
                         {swap >= 0 ? "+" : ""}${swap.toFixed(2)}
                       </span>
-                    </div>
-                  )}
-                  {hasFees && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-secondary">Comisión</span>
-                      <span className={cn("font-mono", commission >= 0 ? "text-profit" : "text-loss")}>
-                        {commission >= 0 ? "+" : ""}${commission.toFixed(2)}
+                    ) : (
+                      <span className="font-mono text-text-disabled">$0.00</span>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between text-xs">
+                    <span className="text-text-secondary">Charges</span>
+                    {charges !== 0 ? (
+                      <span className={cn("font-mono", charges >= 0 ? "text-profit" : "text-loss")}>
+                        {charges >= 0 ? "+" : ""}${charges.toFixed(2)}
                       </span>
-                    </div>
-                  )}
+                    ) : (
+                      <span className="font-mono text-text-disabled">$0.00</span>
+                    )}
+                  </div>
 
                   {/* Rounding note — only if diff > $0.01 */}
                   {roundingDiff > 0.01 && (
@@ -494,7 +496,7 @@ export default function PositionsTable() {
                         <span className="font-mono">{componentSum >= 0 ? "+" : ""}${componentSum.toFixed(2)}</span>
                       </div>
                       <p className="text-[10px] text-text-disabled leading-snug">
-                        Δ ${roundingDiff.toFixed(2)} · redondeo interno de MT5 sobre valores crudos
+                        Δ ${roundingDiff.toFixed(2)} · redondeo interno de MT5
                       </p>
                     </div>
                   )}

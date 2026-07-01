@@ -323,7 +323,7 @@ export default function TradeDetailPage() {
                   )}
                   {displayFees !== 0 && (
                     <span className={cn("text-[10px]", displayFees >= 0 ? "text-profit/70" : "text-loss/70")}>
-                      Com. <span className="font-mono">{fmtCost(displayFees)}</span>
+                      Charges <span className="font-mono">{fmtCost(displayFees)}</span>
                     </span>
                   )}
                 </div>
@@ -424,7 +424,7 @@ export default function TradeDetailPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-text-disabled block mb-1">
-                      Comisión <span className="normal-case">(– siempre)</span>
+                      Charges <span className="normal-case">(– siempre)</span>
                     </label>
                     <input
                       type="number"
