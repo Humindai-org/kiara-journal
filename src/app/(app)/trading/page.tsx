@@ -73,7 +73,7 @@ export default function TradingPage() {
       </div>
 
       {/* Positions table */}
-      <div className="h-52 border-t border-border bg-surface shrink-0">
+      <div className="h-72 border-t border-border bg-surface shrink-0">
         <PositionsTable />
       </div>
     </div>

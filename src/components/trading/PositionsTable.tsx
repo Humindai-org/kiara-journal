@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw, X, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -24,15 +24,41 @@ type TradeRow = {
   return_r: number | null;
   source: string;
   mt5_ticket: string | null;
-  // join: si tiene entrada de journal
   journal_entries?: { id: string }[];
 };
 
-function fmt5(n: number | null) {
-  return n != null ? n.toFixed(5) : "—";
+type Filters = {
+  par: string;
+  dia: string;
+  direction: "" | "LONG" | "SHORT";
+  resultado: "" | "pos" | "neg";
+  volMin: string;
+  ticket: string;
+};
+
+const EMPTY_FILTERS: Filters = {
+  par: "",
+  dia: "",
+  direction: "",
+  resultado: "",
+  volMin: "",
+  ticket: "",
+};
+
+function fmtDateTime(iso: string) {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
+  const time = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  return { day, time };
 }
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+function calcChange(t: TradeRow): number | null {
+  if (t.exit_price == null || t.entry_price === 0) return null;
+  return ((t.exit_price - t.entry_price) / t.entry_price) * 100;
+}
+
+function hasActiveFilters(f: Filters) {
+  return Object.values(f).some(Boolean);
 }
 
 export default function PositionsTable() {
@@ -40,10 +66,12 @@ export default function PositionsTable() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const [tab, setTab]         = useState<Tab>("closed");
-  const [trades, setTrades]   = useState<TradeRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId]   = useState<string | null>(null);
+  const [tab, setTab]               = useState<Tab>("closed");
+  const [trades, setTrades]         = useState<TradeRow[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [userId, setUserId]         = useState<string | null>(null);
+  const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -65,16 +93,13 @@ export default function PositionsTable() {
       .select("id, instrument, direction, lot_size, entry_price, exit_price, sl, tp, net_pnl, open_time, close_time, duration_minutes, return_r, source, mt5_ticket, journal_entries(id)")
       .eq("user_id", uid)
       .order("open_time", { ascending: false })
-      .limit(50);
+      .limit(200);
 
     if (currentTab === "open") {
-      // Trades sin close_time = todavía abiertos (creados manualmente sin cerrar)
       query = query.is("close_time", null);
     } else if (currentTab === "pending") {
-      // Trades cerrados que no tienen entrada de journal aún
       query = query.not("close_time", "is", null);
     } else {
-      // Cerrados: últimos 7 días
       const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
       query = query.not("close_time", "is", null).gte("open_time", since);
     }
@@ -82,7 +107,6 @@ export default function PositionsTable() {
     const { data } = await query;
     let rows = (data as TradeRow[]) ?? [];
 
-    // Para "pendientes": filtrar los que no tienen journal
     if (currentTab === "pending") {
       rows = rows.filter(t => !t.journal_entries || t.journal_entries.length === 0);
     }
@@ -95,6 +119,26 @@ export default function PositionsTable() {
     if (userId) fetchTrades(userId, tab);
   }
 
+  function clearFilters() {
+    setFilters(EMPTY_FILTERS);
+  }
+
+  const filteredTrades = useMemo(() => {
+    return trades.filter(t => {
+      if (filters.par && !t.instrument.toLowerCase().includes(filters.par.toLowerCase())) return false;
+      if (filters.dia) {
+        const tradeDate = new Date(t.open_time).toISOString().slice(0, 10);
+        if (tradeDate !== filters.dia) return false;
+      }
+      if (filters.direction && t.direction !== filters.direction) return false;
+      if (filters.resultado === "pos" && (t.net_pnl == null || t.net_pnl <= 0)) return false;
+      if (filters.resultado === "neg" && (t.net_pnl == null || t.net_pnl > 0)) return false;
+      if (filters.volMin !== "" && t.lot_size < parseFloat(filters.volMin)) return false;
+      if (filters.ticket && !t.mt5_ticket?.toLowerCase().includes(filters.ticket.toLowerCase())) return false;
+      return true;
+    });
+  }, [trades, filters]);
+
   const tabs: { key: Tab; label: string }[] = [
     { key: "open",    label: "Abiertas" },
     { key: "pending", label: "Sin journal" },
@@ -104,10 +148,13 @@ export default function PositionsTable() {
   const decimals = (instrument: string) =>
     instrument.includes("JPY") || instrument.includes("XAU") || instrument.includes("XAG") ? 3 : 5;
 
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const active = hasActiveFilters(filters);
+
   return (
     <div className="flex flex-col h-full">
-      {/* Tabs */}
-      <div className="flex items-center justify-between px-4 border-b border-border">
+      {/* Tabs + actions */}
+      <div className="flex items-center justify-between px-4 border-b border-border shrink-0">
         <div className="flex gap-4">
           {tabs.map(({ key, label }) => (
             <button
@@ -129,32 +176,122 @@ export default function PositionsTable() {
             </button>
           ))}
         </div>
-        <button
-          onClick={refresh}
-          className="p-1.5 text-text-disabled hover:text-text-primary transition-colors"
-          title="Actualizar"
-        >
-          <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-        </button>
+
+        <div className="flex items-center gap-2">
+          {active && (
+            <span className="text-[10px] text-text-disabled tabular-nums">
+              {filteredTrades.length}/{trades.length}
+            </span>
+          )}
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded transition-colors",
+              showFilters || active
+                ? "bg-accent/20 text-accent"
+                : "text-text-secondary hover:text-text-primary"
+            )}
+            title="Filtros"
+          >
+            <SlidersHorizontal className="size-3" />
+            Filtros
+            {activeFilterCount > 0 && (
+              <span className="bg-accent text-bg text-[9px] font-bold px-1 py-0.5 rounded-full leading-none">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={refresh}
+            className="p-1.5 text-text-disabled hover:text-text-primary transition-colors"
+            title="Actualizar"
+          >
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+          </button>
+        </div>
       </div>
+
+      {/* Filter bar */}
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border bg-surface-2/40 shrink-0">
+          <input
+            type="text"
+            placeholder="Par…"
+            value={filters.par}
+            onChange={e => setFilters(f => ({ ...f, par: e.target.value }))}
+            className="h-6 w-20 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light placeholder:text-text-disabled focus:outline-none focus:border-accent"
+          />
+          <input
+            type="date"
+            value={filters.dia}
+            onChange={e => setFilters(f => ({ ...f, dia: e.target.value }))}
+            className="h-6 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light focus:outline-none focus:border-accent"
+          />
+          <select
+            value={filters.direction}
+            onChange={e => setFilters(f => ({ ...f, direction: e.target.value as Filters["direction"] }))}
+            className="h-6 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light focus:outline-none focus:border-accent"
+          >
+            <option value="">Dir. (todas)</option>
+            <option value="LONG">LONG</option>
+            <option value="SHORT">SHORT</option>
+          </select>
+          <select
+            value={filters.resultado}
+            onChange={e => setFilters(f => ({ ...f, resultado: e.target.value as Filters["resultado"] }))}
+            className="h-6 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light focus:outline-none focus:border-accent"
+          >
+            <option value="">P&amp;L (todos)</option>
+            <option value="pos">Ganadoras</option>
+            <option value="neg">Perdedoras</option>
+          </select>
+          <input
+            type="number"
+            placeholder="Vol. mín…"
+            value={filters.volMin}
+            step="0.01"
+            min="0"
+            onChange={e => setFilters(f => ({ ...f, volMin: e.target.value }))}
+            className="h-6 w-20 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light placeholder:text-text-disabled focus:outline-none focus:border-accent"
+          />
+          <input
+            type="text"
+            placeholder="Ticket…"
+            value={filters.ticket}
+            onChange={e => setFilters(f => ({ ...f, ticket: e.target.value }))}
+            className="h-6 w-20 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light placeholder:text-text-disabled focus:outline-none focus:border-accent"
+          />
+          {active && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 h-6 px-2 text-[10px] text-text-secondary hover:text-text-primary bg-surface-hi rounded border border-border-light transition-colors"
+            >
+              <X className="size-3" />
+              Limpiar
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-text-disabled text-xs">
           Cargando…
         </div>
-      ) : trades.length === 0 ? (
+      ) : filteredTrades.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">
-          {tab === "open"    && "Sin posiciones abiertas"}
-          {tab === "pending" && "Todos los trades están journalizados ✓"}
-          {tab === "closed"  && "Sin trades en los últimos 7 días"}
+          {active
+            ? "Sin resultados con estos filtros"
+            : tab === "open"    ? "Sin posiciones abiertas"
+            : tab === "pending" ? "Todos los trades están journalizados ✓"
+            :                    "Sin trades en los últimos 7 días"}
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1 overflow-x-auto overflow-y-auto">
           <table className="w-full text-xs">
-            <thead>
+            <thead className="sticky top-0 bg-surface z-10">
               <tr className="border-b border-border">
-                {["Par", "Dir.", "Lotes", "Entrada", "Salida", "SL", "TP", "P&L", "R", "Hora", "Dur.", ""].map((h) => (
+                {["Par", "Dir.", "Lotes", "Entrada", "Salida", "SL", "TP", "P&L", "R", "Chg%", "Fecha/Hora", "Dur.", ""].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-left text-text-secondary font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -162,9 +299,11 @@ export default function PositionsTable() {
               </tr>
             </thead>
             <tbody>
-              {trades.map((t) => {
+              {filteredTrades.map((t) => {
                 const d = decimals(t.instrument);
                 const hasJournal = t.journal_entries && t.journal_entries.length > 0;
+                const change = calcChange(t);
+                const { day, time } = fmtDateTime(t.open_time);
                 return (
                   <tr key={t.id} className="border-b border-border/40 hover:bg-surface-2/50 transition-colors">
                     <td className="px-3 py-2.5 font-medium text-text-primary whitespace-nowrap">
@@ -183,7 +322,9 @@ export default function PositionsTable() {
                     </td>
                     <td className="px-3 py-2.5 font-mono text-text-primary">{t.lot_size.toFixed(2)}</td>
                     <td className="px-3 py-2.5 font-mono text-text-primary">{t.entry_price.toFixed(d)}</td>
-                    <td className="px-3 py-2.5 font-mono text-text-secondary">{t.exit_price ? t.exit_price.toFixed(d) : "—"}</td>
+                    <td className="px-3 py-2.5 font-mono text-text-secondary">
+                      {t.exit_price ? t.exit_price.toFixed(d) : "—"}
+                    </td>
                     <td className="px-3 py-2.5 font-mono text-loss">{t.sl ? t.sl.toFixed(d) : "—"}</td>
                     <td className="px-3 py-2.5 font-mono text-profit">{t.tp ? t.tp.toFixed(d) : "—"}</td>
                     <td className={cn(
@@ -202,7 +343,19 @@ export default function PositionsTable() {
                     )}>
                       {t.return_r != null ? `${t.return_r >= 0 ? "+" : ""}${t.return_r.toFixed(2)}R` : "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-text-secondary whitespace-nowrap">{fmtTime(t.open_time)}</td>
+                    <td className={cn(
+                      "px-3 py-2.5 font-mono",
+                      change == null ? "text-text-disabled"
+                        : change >= 0 ? "text-profit" : "text-loss"
+                    )}>
+                      {change != null
+                        ? `${change >= 0 ? "+" : ""}${change.toFixed(3)}%`
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className="text-text-disabled text-[10px]">{day}</span>
+                      <span className="ml-1 text-text-secondary">{time}</span>
+                    </td>
                     <td className="px-3 py-2.5 text-text-secondary">
                       {t.duration_minutes != null ? `${t.duration_minutes}m` : "—"}
                     </td>
