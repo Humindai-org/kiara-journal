@@ -82,7 +82,7 @@ export default function OrderForm({
           <Lock className="size-6 text-loss" />
           <p className="text-sm font-medium text-loss">{newsBlock.eventName}</p>
           <p className="text-xs text-text-secondary">
-            Trading bloqueado · {newsBlock.minutesLeft} min restantes
+            Trading blocked · {newsBlock.minutesLeft} min remaining
           </p>
         </div>
       )}
@@ -220,7 +220,7 @@ export default function OrderForm({
             <span className="text-sm font-mono text-text-primary">{calc.lots.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-text-secondary">Riesgo</span>
+            <span className="text-xs text-text-secondary">Risk</span>
             <span className="text-sm font-mono text-warning">${calc.riskUsd}</span>
           </div>
           <div className="flex justify-between">
@@ -234,7 +234,7 @@ export default function OrderForm({
       {tradeLimitReached && (
         <div className="warning-banner rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
           <AlertTriangle className="size-3.5 shrink-0" />
-          Límite diario ({tradesUsed}/{maxTrades} trades)
+          Daily limit ({tradesUsed}/{maxTrades} trades)
         </div>
       )}
 
@@ -250,8 +250,8 @@ export default function OrderForm({
         )}
       >
         {isBlocked
-          ? newsBlock ? "🔒 Bloqueado por noticias" : "Límite alcanzado"
-          : `Abrir ${direction} · ${instrument}`}
+          ? newsBlock ? "🔒 Blocked by news" : "Limit reached"
+          : `Open ${direction} · ${instrument}`}
       </button>
     </div>
   );

@@ -123,10 +123,10 @@ function ModelCard({ item, onToggle, onDelete, onEdit, editMode }: ModelCardProp
           className="w-full bg-surface border border-accent rounded-md px-2.5 py-1.5 text-xs text-text-primary focus:outline-none"
         />
         <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={commitEdit} className="text-profit transition-colors" title="Guardar">
+          <button type="button" onClick={commitEdit} className="text-profit transition-colors" title="Save">
             <Check className="size-3.5" />
           </button>
-          <button type="button" onClick={() => { setDraft(item.label); setEditing(false); }} className="text-text-disabled transition-colors" title="Cancelar">
+          <button type="button" onClick={() => { setDraft(item.label); setEditing(false); }} className="text-text-disabled transition-colors" title="Cancel">
             <X className="size-3.5" />
           </button>
         </div>
@@ -143,7 +143,7 @@ function ModelCard({ item, onToggle, onDelete, onEdit, editMode }: ModelCardProp
             type="button"
             onClick={() => setEditing(true)}
             className="size-5 flex items-center justify-center rounded-full bg-surface-2 border border-border text-text-disabled transition-colors"
-            title="Editar"
+            title="Edit"
           >
             <Pencil className="size-2.5" />
           </button>
@@ -151,7 +151,7 @@ function ModelCard({ item, onToggle, onDelete, onEdit, editMode }: ModelCardProp
             type="button"
             onClick={onDelete}
             className="size-5 flex items-center justify-center rounded-full bg-surface-2 border border-border text-text-disabled transition-colors"
-            title="Eliminar"
+            title="Delete"
           >
             <X className="size-3" />
           </button>
@@ -220,7 +220,7 @@ export function ModelCardGrid({ items, onChange, editMode }: ModelCardGridProps)
   return (
     <div className="space-y-3">
       {items.length === 0 && (
-        <p className="text-xs text-text-disabled py-2 text-center">Sin modelos — agrega uno abajo</p>
+        <p className="text-xs text-text-disabled py-2 text-center">No models — add one below</p>
       )}
       <div className="grid grid-cols-2 gap-2">
         {items.map((item) => (
@@ -243,7 +243,7 @@ export function ModelCardGrid({ items, onChange, editMode }: ModelCardGridProps)
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-            placeholder="Agregar modelo (ej: RPB — Return Pullback: descripción)..."
+            placeholder="Add model (e.g.: RPB — Return Pullback: description)..."
             className="flex-1 bg-surface-2 border border-border rounded-md px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
           />
           <button
@@ -253,13 +253,13 @@ export function ModelCardGrid({ items, onChange, editMode }: ModelCardGridProps)
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
           >
             <Plus className="size-3" />
-            Agregar
+            Add
           </button>
         </div>
       )}
 
       {items.length > 0 && (
-        <p className="text-[10px] text-text-disabled">{enabledCount}/{items.length} activos</p>
+        <p className="text-[10px] text-text-disabled">{enabledCount}/{items.length} active</p>
       )}
     </div>
   );
@@ -332,25 +332,25 @@ export default function PlanEditor({ form, onChange, initialEditMode = false }: 
       <div className="card p-4 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-text-secondary mb-1 block">Nombre del plan</label>
+            <label className="text-xs text-text-secondary mb-1 block">Plan name</label>
             <input
               type="text"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="Mi plan de trading"
+              placeholder="My trading plan"
               className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
             />
           </div>
           <div>
-            <label className="text-xs text-text-secondary mb-1 block">Tipo de plan</label>
+            <label className="text-xs text-text-secondary mb-1 block">Plan type</label>
             <select
               value={form.plan_type}
               onChange={(e) => set("plan_type", e.target.value)}
               className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
             >
-              <option value="CUSTOM">Personalizado</option>
-              <option value="MATVARD_PHASE2">MATVARD Fase 2</option>
-              <option value="MATVARD_PHASE1">MATVARD Fase 1</option>
+              <option value="CUSTOM">Custom</option>
+              <option value="MATVARD_PHASE2">MATVARD Phase 2</option>
+              <option value="MATVARD_PHASE1">MATVARD Phase 1</option>
             </select>
           </div>
         </div>
@@ -371,7 +371,7 @@ export default function PlanEditor({ form, onChange, initialEditMode = false }: 
               )} />
             </div>
             <span className={cn("text-sm", form.is_active ? "text-accent font-medium" : "text-text-secondary")}>
-              {form.is_active ? "Plan activo" : "Plan inactivo"}
+              {form.is_active ? "Plan active" : "Plan inactive"}
             </span>
           </div>
 
@@ -386,10 +386,10 @@ export default function PlanEditor({ form, onChange, initialEditMode = false }: 
                   ? "border-accent bg-accent/10 text-accent"
                   : "border-border text-text-secondary hover:border-accent/40 hover:text-accent"
               )}
-              title={editMode ? "Desactivar modo edición" : "Activar modo edición"}
+              title={editMode ? "Disable edit mode" : "Enable edit mode"}
             >
               {editMode ? <Pencil className="size-3" /> : <Lock className="size-3" />}
-              {editMode ? "Editando" : "Editar"}
+              {editMode ? "Editing" : "Edit"}
             </button>
 
             {/* Load MATVARD template button */}
@@ -397,15 +397,15 @@ export default function PlanEditor({ form, onChange, initialEditMode = false }: 
               type="button"
               onClick={() => {
                 const confirmed = hasAnyContent
-                  ? confirm("¿Cargar la plantilla MATVARD? Esto reemplazará el contenido actual.")
+                  ? confirm("Load the MATVARD template? This will replace the current content.")
                   : true;
                 if (confirmed) onChange(loadMATVARD(form));
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent/40 text-accent text-xs hover:bg-accent/10 transition-colors"
-              title="Rellenar todos los campos con los defaults de MATVARD"
+              title="Fill all fields with MATVARD defaults"
             >
               <Wand2 className="size-3" />
-              Plantilla MATVARD
+              MATVARD Template
             </button>
           </div>
         </div>
@@ -413,38 +413,38 @@ export default function PlanEditor({ form, onChange, initialEditMode = false }: 
 
       {/* ── Proceso de Charting ──────────────────────────── */}
       <Section
-        title="Proceso de Charting (Pre-mercado)"
-        badge={form.charting_items.length > 0 ? activeBadge(form.charting_items) : "vacío"}
+        title="Charting Process (Pre-market)"
+        badge={form.charting_items.length > 0 ? activeBadge(form.charting_items) : "empty"}
         badgeColor={form.charting_items.length > 0 ? "text-text-secondary" : "text-text-disabled"}
         defaultOpen
       >
         <EditableChecklist
           items={form.charting_items}
           onChange={(items) => set("charting_items", items)}
-          addPlaceholder="Agregar paso de charting..."
+          addPlaceholder="Add charting step..."
           editMode={editMode}
         />
       </Section>
 
-      {/* ── Criterios de Entrada (confluencias) ─────────── */}
+      {/* ── Entry Criteria (confluences) ─────────── */}
       <Section
-        title="Criterios de Entrada"
-        badge={form.confluence_items.length > 0 ? activeBadge(form.confluence_items) : "vacío"}
+        title="Entry Criteria"
+        badge={form.confluence_items.length > 0 ? activeBadge(form.confluence_items) : "empty"}
         badgeColor={form.confluence_items.length > 0 ? "text-text-secondary" : "text-text-disabled"}
         defaultOpen
       >
         <EditableChecklist
           items={form.confluence_items}
           onChange={(items) => set("confluence_items", items)}
-          addPlaceholder="Agregar criterio de entrada..."
+          addPlaceholder="Add entry criterion..."
           editMode={editMode}
         />
       </Section>
 
-      {/* ── Modelos de Entrada ──────────────────────────── */}
+      {/* ── Entry Models ──────────────────────────── */}
       <Section
-        title="Modelos de Entrada"
-        badge={form.model_items.length > 0 ? activeBadge(form.model_items) : "vacío"}
+        title="Entry Models"
+        badge={form.model_items.length > 0 ? activeBadge(form.model_items) : "empty"}
         badgeColor={form.model_items.length > 0 ? "text-text-secondary" : "text-text-disabled"}
         defaultOpen
       >
@@ -455,32 +455,32 @@ export default function PlanEditor({ form, onChange, initialEditMode = false }: 
         />
       </Section>
 
-      {/* ── Gestión del Trade ──────────────────────────── */}
+      {/* ── Trade Management ──────────────────────────── */}
       <Section
-        title="Gestión del Trade"
-        badge={form.trade_management_items.length > 0 ? activeBadge(form.trade_management_items) : "vacío"}
+        title="Trade Management"
+        badge={form.trade_management_items.length > 0 ? activeBadge(form.trade_management_items) : "empty"}
         badgeColor={form.trade_management_items.length > 0 ? "text-text-secondary" : "text-text-disabled"}
         defaultOpen
       >
         <EditableChecklist
           items={form.trade_management_items}
           onChange={(items) => set("trade_management_items", items)}
-          addPlaceholder="Agregar regla de gestión..."
+          addPlaceholder="Add management rule..."
           editMode={editMode}
         />
       </Section>
 
-      {/* ── Criterios de Salida ────────────────────────── */}
+      {/* ── Exit Criteria ────────────────────────── */}
       <Section
-        title="Criterios de Salida"
-        badge={form.exit_criteria_items.length > 0 ? activeBadge(form.exit_criteria_items) : "vacío"}
+        title="Exit Criteria"
+        badge={form.exit_criteria_items.length > 0 ? activeBadge(form.exit_criteria_items) : "empty"}
         badgeColor={form.exit_criteria_items.length > 0 ? "text-text-secondary" : "text-text-disabled"}
         defaultOpen
       >
         <EditableChecklist
           items={form.exit_criteria_items}
           onChange={(items) => set("exit_criteria_items", items)}
-          addPlaceholder="Agregar criterio de salida..."
+          addPlaceholder="Add exit criterion..."
           editMode={editMode}
         />
       </Section>

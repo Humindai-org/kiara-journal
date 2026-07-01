@@ -31,7 +31,7 @@ export default function LoginPage() {
 
   async function handleReset() {
     if (!email.trim()) {
-      setError("Ingresa tu email primero para recuperar la contraseña.");
+      setError("Enter your email first to recover your password.");
       return;
     }
     setResetLoading(true);
@@ -60,9 +60,9 @@ export default function LoginPage() {
 
       {/* Card */}
       <div className="card p-6">
-        <h1 className="text-text-primary font-medium mb-1">Iniciar sesión</h1>
+        <h1 className="text-text-primary font-medium mb-1">Sign in</h1>
         <p className="text-text-secondary text-xs mb-6">
-          Cuenta fondeada TTP CFD Prime $100K
+          Funded account TTP CFD Prime $100K
         </p>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -83,7 +83,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-xs text-text-secondary mb-1.5">
-              Contraseña
+              Password
             </label>
             <input
               type="password"
@@ -104,7 +104,7 @@ export default function LoginPage() {
 
           {resetSent && (
             <p className="text-xs text-profit bg-[#0f2b1a] border border-profit/20 rounded-lg px-3 py-2">
-              Te enviamos un email de recuperación. Revisá tu bandeja (y spam).
+              We sent you a recovery email. Check your inbox (and spam).
             </p>
           )}
 
@@ -113,7 +113,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-2.5 rounded-lg bg-accent text-bg text-sm font-medium hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Entrando…" : "Entrar"}
+            {loading ? "Signing in…" : "Sign in"}
           </button>
 
           <button
@@ -122,7 +122,7 @@ export default function LoginPage() {
             disabled={resetLoading || resetSent}
             className="w-full text-xs text-text-disabled hover:text-text-secondary transition-colors disabled:opacity-40"
           >
-            {resetLoading ? "Enviando…" : "¿Olvidaste tu contraseña?"}
+            {resetLoading ? "Sending…" : "Forgot your password?"}
           </button>
         </form>
       </div>

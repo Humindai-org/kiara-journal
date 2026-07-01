@@ -70,10 +70,10 @@ export default function MacroBriefing({ region }: { region: "EUROPEAN" | "AMERIC
     try {
       const res = await fetch(`/api/briefing?region=${region}${force ? "&force=1" : ""}`);
       const json = await res.json();
-      if (!res.ok) { setError(json.error ?? "Error al generar el briefing"); setData(null); }
+      if (!res.ok) { setError(json.error ?? "Error generating the briefing"); setData(null); }
       else setData(json);
     } catch {
-      setError("No se pudo cargar el briefing");
+      setError("Could not load the briefing");
     } finally {
       setLoading(false);
     }
@@ -85,8 +85,8 @@ export default function MacroBriefing({ region }: { region: "EUROPEAN" | "AMERIC
     return (
       <div className="card p-12 flex flex-col items-center justify-center gap-3 text-text-disabled">
         <RefreshCw className="size-5 animate-spin text-accent" />
-        <p className="text-sm">Cargando datos de mercado en vivo…</p>
-        <p className="text-[11px]">Cotizaciones, calendario y titulares</p>
+        <p className="text-sm">Loading live market data…</p>
+        <p className="text-[11px]">Quotes, calendar, and headlines</p>
       </div>
     );
   }
@@ -97,7 +97,7 @@ export default function MacroBriefing({ region }: { region: "EUROPEAN" | "AMERIC
         <AlertTriangle className="size-6 text-loss mx-auto" />
         <p className="text-sm text-loss">{error}</p>
         <button onClick={() => load(true)} className="btn-action inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs">
-          <RefreshCw className="size-3.5" /> Reintentar
+          <RefreshCw className="size-3.5" /> Retry
         </button>
       </div>
     );
@@ -173,7 +173,7 @@ export default function MacroBriefing({ region }: { region: "EUROPEAN" | "AMERIC
               ))}
             </div>
           ) : (
-            <p className="text-xs text-text-disabled">Sin eventos clave hoy.</p>
+            <p className="text-xs text-text-disabled">No key events today.</p>
           )}
         </div>
       </div>
@@ -216,9 +216,9 @@ export default function MacroBriefing({ region }: { region: "EUROPEAN" | "AMERIC
 
       {/* Footer */}
       <p className="text-[10px] text-text-disabled text-center pb-2">
-        Datos en vivo · Yahoo Finance, Forex Factory, Google News ·{" "}
-        {new Date(data.generatedAt).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-        {" "}· Solo informativo, no es asesoría financiera
+        Live data · Yahoo Finance, Forex Factory, Google News ·{" "}
+        {new Date(data.generatedAt).toLocaleString("en-US", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+        {" "}· For informational purposes only, not financial advice
       </p>
     </div>
   );

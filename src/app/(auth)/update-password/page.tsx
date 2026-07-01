@@ -77,7 +77,7 @@ export default function UpdatePasswordPage() {
               disabled={loading}
               className="w-full py-2.5 rounded-lg bg-accent text-bg text-sm font-medium hover:bg-accent-dim transition-colors disabled:opacity-50"
             >
-              {loading ? "Guardando…" : "Guardar contraseña"}
+              {loading ? "Saving…" : "Save password"}
             </button>
           </form>
         )}

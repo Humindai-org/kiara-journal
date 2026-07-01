@@ -27,13 +27,13 @@ type Plan = Database["public"]["Tables"]["plans"]["Row"];
 type TabKey = "overview" | "proceso" | "entrada" | "gestion" | "salida" | "notas" | "stats";
 
 const TABS: { key: TabKey; label: string; Icon: React.ElementType }[] = [
-  { key: "overview",  label: "Resumén",          Icon: LayoutDashboard },
-  { key: "proceso",   label: "Proceso",           Icon: ListChecks },
-  { key: "entrada",   label: "Entrada",           Icon: ArrowUpRight },
-  { key: "gestion",   label: "Gestión del Trade", Icon: SlidersHorizontal },
-  { key: "salida",    label: "Salida",            Icon: ArrowDownLeft },
-  { key: "notas",     label: "Notas del Plan",    Icon: FileText },
-  { key: "stats",     label: "Estadísticas",      Icon: BarChart2 },
+  { key: "overview",  label: "Summary",           Icon: LayoutDashboard },
+  { key: "proceso",   label: "Process",           Icon: ListChecks },
+  { key: "entrada",   label: "Entry",             Icon: ArrowUpRight },
+  { key: "gestion",   label: "Trade Management",  Icon: SlidersHorizontal },
+  { key: "salida",    label: "Exit",              Icon: ArrowDownLeft },
+  { key: "notas",     label: "Plan Notes",        Icon: FileText },
+  { key: "stats",     label: "Statistics",        Icon: BarChart2 },
 ];
 
 // Decorative sparkline point sets — varied uptrends
@@ -94,14 +94,14 @@ function dbToForm(plan: Plan): PlanFormData {
 
 function fmtDate(iso: string | null | undefined, short = false) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-ES", {
+  return new Date(iso).toLocaleDateString("en-US", {
     day: "2-digit", month: short ? "short" : "long", year: "numeric",
   });
 }
 
 function fmtDateShort(iso: string | null | undefined) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function compressImage(file: File): Promise<string> {
@@ -169,7 +169,7 @@ function StrategyCard({ plan, idx, selected, onClick, onDuplicate }: StrategyCar
       <button
         onClick={onDuplicate}
         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-surface-hi border border-border text-text-disabled hover:text-accent transition-all"
-        title="Duplicar"
+        title="Duplicate"
       >
         <Copy className="size-2.5" />
       </button>
@@ -208,7 +208,7 @@ function StrategyCard({ plan, idx, selected, onClick, onDuplicate }: StrategyCar
           "self-end text-[9px] font-bold px-1.5 py-0.5 rounded-full tracking-wider",
           plan.is_active ? "bg-profit/15 text-profit" : "bg-surface-hi text-text-disabled"
         )}>
-          {plan.is_active ? "ACTIVO" : "INAC."}
+          {plan.is_active ? "ACTIVE" : "INAC."}
         </span>
       </div>
     </button>
@@ -225,7 +225,7 @@ function ChartingDiagram({ items }: { items: RuleItem[] }) {
         {/* Session box */}
         <rect x="30" y="8" width="170" height="118" fill="rgba(139,92,246,0.04)"
           stroke="rgba(139,92,246,0.18)" strokeWidth="1" rx="3" strokeDasharray="5,3" />
-        <text x="36" y="22" fontSize="7.5" fill="rgba(139,92,246,0.65)" fontFamily="sans-serif">Sesión Londres</text>
+        <text x="36" y="22" fontSize="7.5" fill="rgba(139,92,246,0.65)" fontFamily="sans-serif">London Session</text>
 
         {/* Bearish candles */}
         {[
@@ -259,9 +259,9 @@ function ChartingDiagram({ items }: { items: RuleItem[] }) {
 
         {/* HTF / MTF / LTF labels */}
         {([
-          { x: 8,   label: "HTF: 4H",  sub: "Bias Alcista",        sc: "#44e4b2" },
-          { x: 103, label: "MTF: 15m", sub: "Estructura Alcista",  sc: "#44e4b2" },
-          { x: 198, label: "LTF: 1m",  sub: "Setup Confirmado",    sc: "#9d8bff" },
+          { x: 8,   label: "HTF: 4H",  sub: "Bullish Bias",       sc: "#44e4b2" },
+          { x: 103, label: "MTF: 15m", sub: "Bullish Structure",  sc: "#44e4b2" },
+          { x: 198, label: "LTF: 1m",  sub: "Confirmed Setup",    sc: "#9d8bff" },
         ] as const).map(({ x, label, sub, sc }) => (
           <g key={x}>
             <rect x={x} y="136" width="90" height="27" fill="rgba(20,18,31,0.85)"
@@ -417,7 +417,7 @@ function ChartingImageZone({ image, editMode, onChange }: ChartingImageZoneProps
               type="button"
               onClick={() => inputRef.current?.click()}
               className="p-1.5 rounded-lg bg-surface/90 border border-border text-text-secondary hover:text-accent transition-colors"
-              title="Cambiar imagen"
+              title="Change image"
             >
               <ImagePlus className="size-3.5" />
             </button>
@@ -425,7 +425,7 @@ function ChartingImageZone({ image, editMode, onChange }: ChartingImageZoneProps
               type="button"
               onClick={() => onChange(null)}
               className="p-1.5 rounded-lg bg-surface/90 border border-border text-text-secondary hover:text-loss transition-colors"
-              title="Eliminar imagen"
+              title="Remove image"
             >
               <X className="size-3.5" />
             </button>
@@ -453,8 +453,8 @@ function ChartingImageZone({ image, editMode, onChange }: ChartingImageZoneProps
       )}
     >
       <ImagePlus className="size-6 text-text-disabled" />
-      <p className="text-xs text-text-disabled">Arrastra o toca para subir tu chart</p>
-      <p className="text-[10px] text-text-disabled/60">JPG, PNG, WEBP — máx. 5MB</p>
+      <p className="text-xs text-text-disabled">Drag or tap to upload your chart</p>
+      <p className="text-[10px] text-text-disabled/60">JPG, PNG, WEBP — max. 5MB</p>
       <input ref={inputRef} type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
     </div>
@@ -507,7 +507,7 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-text-disabled uppercase tracking-wider font-semibold">
-          {items.filter(i => i.enabled).length}/{items.length} activos — toca para activar/desactivar
+          {items.filter(i => i.enabled).length}/{items.length} active — tap to enable/disable
         </p>
         <button
           type="button"
@@ -520,12 +520,12 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
           )}
         >
           <Pencil className="size-2.5" />
-          {localEditMode ? "Listo" : "Editar modelos"}
+          {localEditMode ? "Done" : "Edit models"}
         </button>
       </div>
 
       {items.length === 0 && (
-        <p className="text-xs text-text-disabled text-center py-6">Sin modelos — agrega uno abajo</p>
+        <p className="text-xs text-text-disabled text-center py-6">No models — add one below</p>
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -541,9 +541,9 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") commitEdit(item.id); if (e.key === "Escape") setEditing(null); }}
                   onBlur={() => commitEdit(item.id)}
-                  placeholder="Nombre del modelo..."
+                  placeholder="Model name..."
                   className="w-full bg-surface border border-accent rounded-md px-2 py-1.5 text-xs text-text-primary focus:outline-none" />
-                <p className="text-[10px] text-text-disabled mt-1.5">Enter para guardar · Esc para cancelar</p>
+                <p className="text-[10px] text-text-disabled mt-1.5">Enter to save · Esc to cancel</p>
               </div>
             );
           }
@@ -597,7 +597,7 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
                 {item.enabled && (
                   <div className="mt-1.5 flex items-center gap-1">
                     <div className="size-1.5 rounded-full bg-profit animate-pulse" />
-                    <span className="text-[9px] text-profit font-semibold tracking-wider">ACTIVO</span>
+                    <span className="text-[9px] text-profit font-semibold tracking-wider">ACTIVE</span>
                   </div>
                 )}
               </div>
@@ -611,7 +611,7 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
                     title="Subir imagen del chart"
                   >
                     <ImagePlus className="size-3" />
-                    <span className="text-[8px]">{item.image ? "Cambiar" : "Imagen"}</span>
+                    <span className="text-[8px]">{item.image ? "Change" : "Image"}</span>
                     <input id={`img-${item.id}`} type="file" accept="image/*" className="hidden"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(item.id, f); e.target.value = ""; }} />
                   </label>
@@ -619,13 +619,13 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
                     onClick={() => { setEditing(item.id); setDraft(item.label); }}
                     className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 transition-colors">
                     <Pencil className="size-3" />
-                    <span className="text-[8px]">Nombre</span>
+                    <span className="text-[8px]">Name</span>
                   </button>
                   <button type="button"
                     onClick={() => remove(item.id)}
                     className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-loss hover:bg-loss/5 transition-colors">
                     <Trash2 className="size-3" />
-                    <span className="text-[8px]">Borrar</span>
+                    <span className="text-[8px]">Delete</span>
                   </button>
                 </div>
               )}
@@ -638,7 +638,7 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
         <div className="flex gap-2 pt-1">
           <input
             type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
-            placeholder='Ej: MSS — Model: descripción breve'
+            placeholder='E.g.: MSS — Model: short description'
             onKeyDown={(e) => { if (e.key === "Enter") add(); }}
             className="flex-1 bg-surface border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent transition-colors"
           />
@@ -677,7 +677,7 @@ export default function PlanModePage() {
   const fetchPlans = useCallback(async (uid: string, keepSelection?: string) => {
     const { data, error } = await supabase
       .from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false });
-    if (error) { toast.error("Error al cargar planes"); return; }
+    if (error) { toast.error("Error loading plans"); return; }
     const rows = data as Plan[] | null;
     setPlans(rows ?? []);
     if (rows && rows.length > 0 && !keepSelection && !selectedId) {
@@ -717,7 +717,7 @@ export default function PlanModePage() {
   }
 
   async function handleSave() {
-    if (!userId || !form.name.trim()) { toast.error("El nombre del plan es obligatorio"); return; }
+    if (!userId || !form.name.trim()) { toast.error("Plan name is required"); return; }
     setIsSaving(true);
     try {
       const payload = formToDbPayload(form, userId, chartingImage);
@@ -727,40 +727,40 @@ export default function PlanModePage() {
         if (error) throw error;
         const created = data as Plan;
         setPlans((p) => [created, ...p]); setSelectedId(created.id);
-        setIsNew(false); setEditMode(false); toast.success("Plan creado");
+        setIsNew(false); setEditMode(false); toast.success("Plan created");
       } else if (selectedId) {
         const { data, error } = await db.from("plans").update(payload).eq("id", selectedId).select().single();
         if (error) throw error;
         const updated = data as Plan;
-        setPlans((p) => p.map((x) => (x.id === selectedId ? updated : x))); toast.success("Plan guardado");
+        setPlans((p) => p.map((x) => (x.id === selectedId ? updated : x))); toast.success("Plan saved");
       }
       if (userId) fetchPlans(userId, selectedId ?? "keep");
-    } catch { toast.error("Error al guardar el plan"); }
+    } catch { toast.error("Error saving plan"); }
     finally { setIsSaving(false); }
   }
 
   async function handleDelete() {
     if (!selectedId || isNew) return;
-    if (!confirm("¿Eliminar este plan? Esta acción no se puede deshacer.")) return;
+    if (!confirm("Delete this plan? This action cannot be undone.")) return;
     setIsDeleting(true);
     try {
       const { error } = await db.from("plans").delete().eq("id", selectedId);
       if (error) throw error;
-      setPlans((p) => p.filter((x) => x.id !== selectedId)); startNew(); toast.success("Plan eliminado");
-    } catch { toast.error("Error al eliminar"); }
+      setPlans((p) => p.filter((x) => x.id !== selectedId)); startNew(); toast.success("Plan deleted");
+    } catch { toast.error("Error deleting"); }
     finally { setIsDeleting(false); }
   }
 
   async function handleDuplicate(plan: Plan) {
     if (!userId) return;
-    const copy = dbToForm(plan); copy.name = `${copy.name} (copia)`; copy.is_active = false;
+    const copy = dbToForm(plan); copy.name = `${copy.name} (copy)`; copy.is_active = false;
     try {
       const { data, error } = await db.from("plans").insert(formToDbPayload(copy, userId)).select().single();
       if (error) throw error;
       const created = data as Plan;
       setPlans((p) => [created, ...p]); setSelectedId(created.id);
-      setForm(dbToForm(created)); setIsNew(false); toast.success("Plan duplicado");
-    } catch { toast.error("Error al duplicar el plan"); }
+      setForm(dbToForm(created)); setIsNew(false); toast.success("Plan duplicated");
+    } catch { toast.error("Error duplicating plan"); }
   }
 
   async function handleMarkReviewed() {
@@ -771,8 +771,8 @@ export default function PlanModePage() {
       const { error } = await db.from("plans").update({ last_reviewed_at: now }).eq("id", selectedId);
       if (error) throw error;
       setPlans((p) => p.map((x) => (x.id === selectedId ? { ...x, last_reviewed_at: now } : x)));
-      toast.success("Plan marcado como revisado");
-    } catch { toast.error("Error al marcar como revisado"); }
+      toast.success("Plan marked as reviewed");
+    } catch { toast.error("Error marking as reviewed"); }
     finally { setIsMarkingReviewed(false); }
   }
 
@@ -823,7 +823,7 @@ export default function PlanModePage() {
 
         {/* Proceso de Charting */}
         <div className="card p-4 min-h-0">
-          <p className="section-title mb-3">PROCESO DE CHARTING</p>
+          <p className="section-title mb-3">CHARTING PROCESS</p>
           {chartingImage ? (
             <img src={chartingImage} alt="Chart" className="w-full rounded-lg object-contain max-h-44" />
           ) : (
@@ -833,7 +833,7 @@ export default function PlanModePage() {
 
         {/* Criterios de Entrada */}
         <div className="card p-4">
-          <p className="section-title mb-3">CRITERIOS DE ENTRADA</p>
+          <p className="section-title mb-3">ENTRY CRITERIA</p>
           {form.confluence_items.length > 0 ? (
             <div className="space-y-0.5">
               {form.confluence_items.slice(0, 6).map((item) => (
@@ -842,24 +842,24 @@ export default function PlanModePage() {
               {form.confluence_items.length > 6 && (
                 <button onClick={() => setActiveTab("entrada")}
                   className="text-[10px] text-accent mt-1 hover:underline">
-                  +{form.confluence_items.length - 6} más →
+                  +{form.confluence_items.length - 6} more →
                 </button>
               )}
             </div>
           ) : (
-            <p className="text-xs text-text-disabled text-center py-6">Sin criterios definidos</p>
+            <p className="text-xs text-text-disabled text-center py-6">No criteria defined</p>
           )}
         </div>
 
         {/* Gestión del Trade */}
         <div className="card p-4">
-          <p className="section-title mb-3">GESTIÓN DEL TRADE</p>
+          <p className="section-title mb-3">TRADE MANAGEMENT</p>
           <div className="space-y-0.5">
             {/* Risk row from form */}
             <div className="flex items-center justify-between py-1.5 gap-2 border-b border-border/50 mb-1">
               <div className="flex items-center gap-2">
                 <div className="size-3.5 rounded-full bg-accent/30 border border-accent/60 shrink-0" />
-                <span className="text-xs text-text-secondary">Riesgo por trade</span>
+                <span className="text-xs text-text-secondary">Risk per trade</span>
               </div>
               <span className="text-xs font-mono font-semibold text-accent">{form.risk_per_trade_percent}%</span>
             </div>
@@ -868,7 +868,7 @@ export default function PlanModePage() {
                 <MgmtRow key={item.id} item={item} />
               ))
             ) : (
-              <p className="text-xs text-text-disabled py-4 text-center">Sin reglas definidas</p>
+              <p className="text-xs text-text-disabled py-4 text-center">No rules defined</p>
             )}
           </div>
         </div>
@@ -879,14 +879,14 @@ export default function PlanModePage() {
           <div className="card p-3">
             <div className="flex items-center gap-1.5 mb-2">
               <Shield className="size-3.5 text-accent" />
-              <p className="section-title text-[10px]">CONTROLES DE RIESGO</p>
+              <p className="section-title text-[10px]">RISK CONTROLS</p>
             </div>
             <div className="space-y-1.5">
               {[
-                { label: "Máx. riesgo diario",   value: `$${form.max_daily_loss}` },
-                { label: "Máx. riesgo por trade", value: `${form.risk_per_trade_percent}%` },
-                { label: "Máx. trades diarios",   value: String(form.max_trades_per_day) },
-                { label: "Drawdown máx.",         value: "10%" },
+                { label: "Max. daily risk",       value: `$${form.max_daily_loss}` },
+                { label: "Max. risk per trade",   value: `${form.risk_per_trade_percent}%` },
+                { label: "Max. daily trades",     value: String(form.max_trades_per_day) },
+                { label: "Max. drawdown",         value: "10%" },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-[10px] text-text-disabled">{label}</span>
@@ -900,15 +900,15 @@ export default function PlanModePage() {
           <div className="card p-3">
             <div className="flex items-center gap-1.5 mb-2">
               <BookOpen className="size-3.5 text-accent" />
-              <p className="section-title text-[10px]">REGLAS DE DISCIPLINA</p>
+              <p className="section-title text-[10px]">DISCIPLINE RULES</p>
             </div>
             <div className="space-y-1">
               {(form.notes_items.length > 0 ? form.notes_items.slice(0, 5) : [
-                { id: "d1", label: "Seguir el plan al 100%",          enabled: true },
-                { id: "d2", label: "No operar fuera de Killzones",    enabled: true },
-                { id: "d3", label: "No promediar pérdidas",           enabled: true },
-                { id: "d4", label: "Aceptar stop loss",               enabled: true },
-                { id: "d5", label: "Revisar y mejorar el plan semanalmente", enabled: true },
+                { id: "d1", label: "Follow the plan 100%",            enabled: true },
+                { id: "d2", label: "Don't trade outside Killzones",   enabled: true },
+                { id: "d3", label: "Don't average losing positions",  enabled: true },
+                { id: "d4", label: "Accept the stop loss",            enabled: true },
+                { id: "d5", label: "Review and improve the plan weekly", enabled: true },
               ] as RuleItem[]).map((item) => (
                 <p key={item.id} className="text-[10px] text-text-secondary leading-snug">{item.label}</p>
               ))}
@@ -919,12 +919,12 @@ export default function PlanModePage() {
           <div className="card p-3 flex-1">
             <div className="flex items-center gap-1.5 mb-2">
               <FileText className="size-3.5 text-accent" />
-              <p className="section-title text-[10px]">NOTAS DEL PLAN</p>
+              <p className="section-title text-[10px]">PLAN NOTES</p>
             </div>
             <p className="text-[10px] text-text-secondary leading-relaxed">
               {form.notes_items.length > 0
                 ? form.notes_items.slice(0, 3).map(i => i.label).join(" · ")
-                : "Agrega notas en la pestaña Notas del Plan para recordar antes de operar."}
+                : "Add notes in the Plan Notes tab to remind yourself before trading."}
             </p>
           </div>
         </div>
@@ -936,12 +936,12 @@ export default function PlanModePage() {
         {/* Modelos de Entrada */}
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="section-title">MODELOS DE ENTRADA</p>
+            <p className="section-title">ENTRY MODELS</p>
             <button
               type="button"
               onClick={() => { setActiveTab("entrada"); setEditMode(true); }}
               className="p-1 rounded-md text-text-disabled hover:text-accent transition-colors"
-              title="Editar modelos"
+              title="Edit models"
             >
               <Pencil className="size-3.5" />
             </button>
@@ -958,13 +958,13 @@ export default function PlanModePage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-text-disabled text-center py-6">Sin modelos definidos</p>
+            <p className="text-xs text-text-disabled text-center py-6">No models defined</p>
           )}
         </div>
 
         {/* Criterios de Salida */}
         <div className="card p-4">
-          <p className="section-title mb-3">CRITERIOS DE SALIDA</p>
+          <p className="section-title mb-3">EXIT CRITERIA</p>
           {form.exit_criteria_items.length > 0 ? (
             <div className="space-y-0.5">
               {form.exit_criteria_items.slice(0, 5).map((item) => (
@@ -972,7 +972,7 @@ export default function PlanModePage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-text-disabled text-center py-6">Sin criterios definidos</p>
+            <p className="text-xs text-text-disabled text-center py-6">No criteria defined</p>
           )}
         </div>
       </div>
@@ -993,7 +993,7 @@ export default function PlanModePage() {
               Plan Mode
             </h1>
             <p className="text-[11px] text-text-disabled mt-0.5">
-              Diseña, Planifica y ejecuta tus estrategias con precisión.
+              Design, plan and execute your strategies with precision.
             </p>
           </div>
         </div>
@@ -1003,14 +1003,14 @@ export default function PlanModePage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-text-disabled pointer-events-none" />
             <input
               type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar planes..."
+              placeholder="Search plans..."
               className="w-40 pl-8 pr-3 py-1.5 bg-surface-2 border border-border rounded-lg text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent transition-colors"
             />
           </div>
           <button onClick={startNew}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-bg text-xs font-semibold hover:bg-accent-dim transition-colors shadow-[0_4px_14px_rgba(157,139,255,0.3)]">
             <Plus className="size-3.5" />
-            Nuevo Plan
+            New Plan
           </button>
         </div>
       </header>
@@ -1036,11 +1036,11 @@ export default function PlanModePage() {
               {isNew && (
                 <div className="shrink-0 w-48 rounded-2xl border border-accent/60 bg-accent-glow/30 p-4 flex flex-col gap-2 justify-between">
                   <div>
-                    <p className="text-[10px] text-text-disabled">BORRADOR</p>
-                    <p className="text-sm font-semibold text-accent mt-0.5">{form.name || "Nuevo plan..."}</p>
+                    <p className="text-[10px] text-text-disabled">DRAFT</p>
+                    <p className="text-sm font-semibold text-accent mt-0.5">{form.name || "New plan..."}</p>
                   </div>
                   <span className="self-start text-[9px] font-bold px-2 py-0.5 rounded-full bg-surface-2 text-text-disabled">
-                    PENDIENTE
+                    PENDING
                   </span>
                 </div>
               )}
@@ -1050,7 +1050,7 @@ export default function PlanModePage() {
                 <div className="size-8 rounded-full border border-current flex items-center justify-center group-hover:bg-accent/10 transition-colors">
                   <Plus className="size-4" />
                 </div>
-                <span className="text-xs">Crear nuevo plan</span>
+                <span className="text-xs">Create new plan</span>
               </button>
             </>
           )}
@@ -1070,18 +1070,18 @@ export default function PlanModePage() {
                   {editMode ? (
                     <input
                       type="text" value={form.name} onChange={(e) => set("name", e.target.value)}
-                      autoFocus placeholder="Nombre del plan..."
+                      autoFocus placeholder="Plan name..."
                       className="text-base font-bold text-text-primary bg-transparent border-b border-accent/50 focus:outline-none focus:border-accent pb-px max-w-xs"
                     />
                   ) : (
-                    <h2 className="text-base font-bold text-text-primary">{form.name || "Nuevo plan"}</h2>
+                    <h2 className="text-base font-bold text-text-primary">{form.name || "New plan"}</h2>
                   )}
                   <span className={cn(
                     "flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full cursor-pointer border tracking-wider transition-colors",
                     form.is_active ? "bg-profit/10 text-profit border-profit/25" : "bg-surface-2 text-text-disabled border-border"
                   )} onClick={() => set("is_active", !form.is_active)}>
                     <span className={cn("size-1.5 rounded-full", form.is_active ? "bg-profit" : "bg-text-disabled")} />
-                    {form.is_active ? "ACTIVO" : "INACTIVO"}
+                    {form.is_active ? "ACTIVE" : "INACTIVE"}
                   </span>
                   {editMode && (
                     <button type="button" className="text-text-disabled hover:text-accent transition-colors">
@@ -1095,9 +1095,9 @@ export default function PlanModePage() {
                   {editMode ? (
                     <select value={form.plan_type} onChange={(e) => set("plan_type", e.target.value)}
                       className="bg-surface-2 border border-border rounded-md px-2 py-0.5 text-xs text-text-primary focus:outline-none focus:border-accent">
-                      <option value="CUSTOM">Personalizado</option>
-                      <option value="MATVARD_PHASE2">MATVARD Fase 2</option>
-                      <option value="MATVARD_PHASE1">MATVARD Fase 1</option>
+                      <option value="CUSTOM">Custom</option>
+                      <option value="MATVARD_PHASE2">MATVARD Phase 2</option>
+                      <option value="MATVARD_PHASE1">MATVARD Phase 1</option>
                     </select>
                   ) : (
                     <>
@@ -1105,7 +1105,7 @@ export default function PlanModePage() {
                         {form.plan_type}
                       </span>
                       <span className="text-[11px] text-text-disabled px-2 py-0.5 rounded-md border border-border bg-surface-2">
-                        Basado en ICT Concepts
+                        Based on ICT Concepts
                       </span>
                     </>
                   )}
@@ -1118,8 +1118,8 @@ export default function PlanModePage() {
                 {selectedPlan && !isNew && (
                   <div className="hidden md:flex items-center gap-5">
                     {[
-                      { label: "CREADO",          value: fmtDateShort(selectedPlan.created_at),  icon: Calendar },
-                      { label: "ÚLTIMA EDICIÓN",  value: fmtDateShort(selectedPlan.updated_at),  icon: Clock },
+                      { label: "CREATED",       value: fmtDateShort(selectedPlan.created_at),  icon: Calendar },
+                      { label: "LAST EDITED",   value: fmtDateShort(selectedPlan.updated_at),  icon: Clock },
                       { label: "TRADES",          value: "—",                                     icon: null },
                       { label: "WIN RATE",        value: "—%",                                    icon: null },
                     ].map(({ label, value, icon: Icon }) => (
@@ -1139,7 +1139,7 @@ export default function PlanModePage() {
                   {editMode && (
                     <button type="button"
                       onClick={() => {
-                        const ok = hasAnyContent ? confirm("¿Cargar la plantilla MATVARD?") : true;
+                        const ok = hasAnyContent ? confirm("Load the MATVARD template?") : true;
                         if (ok) setForm(loadMATVARD(form));
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent/40 text-accent text-xs hover:bg-accent/10 transition-colors">
@@ -1157,7 +1157,7 @@ export default function PlanModePage() {
                         : "border-border text-text-secondary hover:border-accent/40"
                     )}>
                     {editMode ? <Pencil className="size-3" /> : <Lock className="size-3" />}
-                    {editMode ? "Editando" : "Editar Plan"}
+                    {editMode ? "Editing" : "Edit Plan"}
                   </button>
 
                   {!isNew && selectedPlan && (
@@ -1167,7 +1167,7 @@ export default function PlanModePage() {
                     </button>
                   )}
                   {!isNew && selectedId && (
-                    <button onClick={handleDelete} disabled={isDeleting} title="Eliminar"
+                    <button onClick={handleDelete} disabled={isDeleting} title="Delete"
                       className="p-1.5 rounded-lg border border-border text-text-secondary hover:border-loss hover:text-loss transition-colors disabled:opacity-50">
                       <Trash2 className="size-4" />
                     </button>
@@ -1175,7 +1175,7 @@ export default function PlanModePage() {
                   <button onClick={handleSave} disabled={isSaving || !form.name.trim()}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-accent text-bg text-xs font-semibold hover:bg-accent-dim disabled:opacity-50 transition-colors shadow-[0_4px_12px_rgba(157,139,255,0.25)]">
                     <Save className="size-3" />
-                    {isSaving ? "Guardando..." : isNew ? "Crear plan" : "Guardar"}
+                    {isSaving ? "Saving..." : isNew ? "Create plan" : "Save"}
                   </button>
                 </div>
               </div>
@@ -1212,8 +1212,8 @@ export default function PlanModePage() {
                 {activeTab === "proceso" && (
                   <>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Chart del Setup</h3>
-                      <p className="text-xs text-text-disabled">Adjunta la imagen del chart que planificas operar</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Setup Chart</h3>
+                      <p className="text-xs text-text-disabled">Attach the chart image for the setup you plan to trade</p>
                     </div>
                     <div className="card p-4">
                       <ChartingImageZone
@@ -1223,14 +1223,14 @@ export default function PlanModePage() {
                       />
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Proceso de Charting</h3>
-                      <p className="text-xs text-text-disabled">Pre-mercado — pasos a seguir antes de operar</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Charting Process</h3>
+                      <p className="text-xs text-text-disabled">Pre-market — steps to follow before trading</p>
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
                         items={form.charting_items}
                         onChange={(items) => set("charting_items", items)}
-                        addPlaceholder="Agregar paso de charting..."
+                        addPlaceholder="Add charting step..."
                         editMode={editMode}
                       />
                     </div>
@@ -1241,8 +1241,8 @@ export default function PlanModePage() {
                 {activeTab === "entrada" && (
                   <>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Modelos de Entrada</h3>
-                      <p className="text-xs text-text-disabled">Setups válidos para ejecutar</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Entry Models</h3>
+                      <p className="text-xs text-text-disabled">Valid setups to execute</p>
                     </div>
                     <div className="card p-4">
                       <ModelCardManager
@@ -1253,14 +1253,14 @@ export default function PlanModePage() {
                       />
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Criterios de Entrada</h3>
-                      <p className="text-xs text-text-disabled">Confluencias necesarias para validar el setup</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Entry Criteria</h3>
+                      <p className="text-xs text-text-disabled">Confluences needed to validate the setup</p>
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
                         items={form.confluence_items}
                         onChange={(items) => set("confluence_items", items)}
-                        addPlaceholder="Agregar criterio de entrada..."
+                        addPlaceholder="Add entry criterion..."
                         editMode={editMode}
                       />
                     </div>
@@ -1271,15 +1271,15 @@ export default function PlanModePage() {
                 {activeTab === "gestion" && (
                   <>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Gestión del Trade</h3>
-                      <p className="text-xs text-text-disabled">Reglas de ejecución durante la operación</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Trade Management</h3>
+                      <p className="text-xs text-text-disabled">Execution rules during the trade</p>
                     </div>
                     <div className="card p-4">
                       {editMode ? (
                         <EditableChecklist
                           items={form.trade_management_items}
                           onChange={(items) => set("trade_management_items", items)}
-                          addPlaceholder="Agregar regla de gestión (Ej: SL: 1R)"
+                          addPlaceholder="Add management rule (e.g.: SL: 1R)"
                           editMode={true}
                         />
                       ) : form.trade_management_items.length > 0 ? (
@@ -1290,7 +1290,7 @@ export default function PlanModePage() {
                         </div>
                       ) : (
                         <p className="text-xs text-text-disabled text-center py-6">
-                          Sin reglas — activa edición para agregar
+                          No rules — enable edit mode to add
                         </p>
                       )}
                     </div>
@@ -1301,14 +1301,14 @@ export default function PlanModePage() {
                 {activeTab === "salida" && (
                   <>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Criterios de Salida</h3>
-                      <p className="text-xs text-text-disabled">Cuándo cerrar la posición</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Exit Criteria</h3>
+                      <p className="text-xs text-text-disabled">When to close the position</p>
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
                         items={form.exit_criteria_items}
                         onChange={(items) => set("exit_criteria_items", items)}
-                        addPlaceholder="Agregar criterio de salida..."
+                        addPlaceholder="Add exit criterion..."
                         editMode={editMode}
                       />
                     </div>
@@ -1319,41 +1319,41 @@ export default function PlanModePage() {
                 {activeTab === "notas" && (
                   <>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Notas del Plan</h3>
-                      <p className="text-xs text-text-disabled">Recordatorios para leer antes de operar</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Plan Notes</h3>
+                      <p className="text-xs text-text-disabled">Reminders to read before trading</p>
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
                         items={form.notes_items}
                         onChange={(items) => set("notes_items", items)}
-                        addPlaceholder="Agregar recordatorio..."
+                        addPlaceholder="Add reminder..."
                         editMode={editMode}
                       />
                     </div>
                     {selectedPlan && !isNew && (
                       <div className="card p-4 space-y-3">
-                        <p className="section-title">Historial</p>
+                        <p className="section-title">History</p>
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-xs text-text-disabled">
                             <Calendar className="size-3.5 shrink-0" />
-                            Creado: {fmtDate(selectedPlan.created_at)}
+                            Created: {fmtDate(selectedPlan.created_at)}
                           </div>
                           {selectedPlan.last_reviewed_at ? (
                             <div className="flex items-center gap-2 text-xs text-profit">
                               <CheckCircle2 className="size-3.5 shrink-0" />
-                              Revisado: {fmtDate(selectedPlan.last_reviewed_at)}
+                              Reviewed: {fmtDate(selectedPlan.last_reviewed_at)}
                             </div>
                           ) : (
                             <div className="flex items-center gap-2 text-xs text-warning">
                               <AlertTriangle className="size-3.5 shrink-0" />
-                              Sin revisar aún
+                              Not reviewed yet
                             </div>
                           )}
                         </div>
                         <button onClick={handleMarkReviewed} disabled={isMarkingReviewed}
                           className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-profit/30 text-profit text-xs hover:bg-profit/5 transition-colors disabled:opacity-50">
                           <CheckCircle2 className="size-3.5" />
-                          Marcar como revisado
+                          Mark as reviewed
                         </button>
                       </div>
                     )}
@@ -1364,21 +1364,21 @@ export default function PlanModePage() {
                 {activeTab === "stats" && (
                   <>
                     <div>
-                      <h3 className="text-sm font-semibold text-text-primary mb-1">Estadísticas</h3>
-                      <p className="text-xs text-text-disabled">Rendimiento de este plan en el Journal</p>
+                      <h3 className="text-sm font-semibold text-text-primary mb-1">Statistics</h3>
+                      <p className="text-xs text-text-disabled">Performance of this plan in the Journal</p>
                     </div>
                     <div className="card p-10 text-center space-y-3">
                       <BarChart2 className="size-8 text-text-disabled mx-auto" />
-                      <p className="text-text-secondary text-sm">Sin datos disponibles</p>
+                      <p className="text-text-secondary text-sm">No data available</p>
                       <p className="text-xs text-text-disabled max-w-xs mx-auto">
-                        Las estadísticas se habilitarán cuando vincules trades de tu Journal a este plan.
+                        Statistics will be enabled when you link trades from your Journal to this plan.
                       </p>
                     </div>
 
                     {/* Score summary */}
                     {totalCriteria > 0 && (
                       <div className="card p-4 space-y-3">
-                        <p className="section-title">Score de Criterios</p>
+                        <p className="section-title">Criteria Score</p>
                         <div className="flex items-end gap-3">
                           <p className={cn("text-4xl font-bold font-mono", gradeColor)}>
                             {enabledCount}
@@ -1407,8 +1407,8 @@ export default function PlanModePage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-2">
             <LayoutDashboard className="size-10 text-text-disabled mx-auto mb-3" />
-            <p className="text-text-secondary text-sm">Selecciona una estrategia</p>
-            <p className="text-xs text-text-disabled">o crea un nuevo plan desde el explorador</p>
+            <p className="text-text-secondary text-sm">Select a strategy</p>
+            <p className="text-xs text-text-disabled">or create a new plan from the explorer</p>
           </div>
         </div>
       )}

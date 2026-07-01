@@ -71,7 +71,7 @@ export default function AccountSelector() {
               </span>
             </span>
           ) : (
-            <span className="text-text-disabled text-xs">Sin cuenta</span>
+            <span className="text-text-disabled text-xs">No account</span>
           )}
           <ChevronDown className="size-3 text-text-secondary shrink-0" />
         </button>
@@ -108,7 +108,7 @@ export default function AccountSelector() {
                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface transition-colors text-xs text-text-secondary hover:text-text-primary"
               >
                 <Plus className="size-3.5" />
-                Agregar cuenta
+                Add account
               </Link>
               <Link
                 href="/settings"
@@ -116,7 +116,7 @@ export default function AccountSelector() {
                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface transition-colors text-xs text-text-secondary hover:text-text-primary"
               >
                 <Settings className="size-3.5" />
-                Gestionar cuentas
+                Manage accounts
               </Link>
             </div>
           </div>
@@ -127,7 +127,7 @@ export default function AccountSelector() {
       <button
         onClick={handleLogout}
         className="size-8 flex items-center justify-center rounded-lg text-text-disabled hover:text-loss hover:bg-surface-2 transition-colors"
-        aria-label="Cerrar sesión"
+        aria-label="Sign out"
       >
         <LogOut className="size-4" />
       </button>

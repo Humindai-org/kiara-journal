@@ -15,7 +15,7 @@ export default function TradeCounter({ used, max }: TradeCounterProps) {
   return (
     <div className="card p-3">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-text-secondary">Trades hoy</p>
+        <p className="text-xs text-text-secondary">Trades today</p>
         <span className={cn("text-lg font-mono font-medium", valueColor)}>
           {used}
           <span className="text-text-disabled text-xs font-normal"> / {max}</span>

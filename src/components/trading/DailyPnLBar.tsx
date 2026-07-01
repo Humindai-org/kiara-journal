@@ -23,7 +23,7 @@ export default function DailyPnLBar({
   return (
     <div className="card p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-text-secondary">P&L diario</p>
+        <p className="text-xs text-text-secondary">Daily P&L</p>
         <span className={cn(
           "text-sm font-mono font-medium",
           pnl > 0 ? "text-profit" : pnl < 0 ? "text-loss" : "text-text-disabled"
@@ -35,7 +35,7 @@ export default function DailyPnLBar({
       {/* Loss bar */}
       <div>
         <div className="flex justify-between mb-1">
-          <span className="text-[10px] text-text-disabled">Max pérdida</span>
+          <span className="text-[10px] text-text-disabled">Max loss</span>
           <span className="text-[10px] font-mono text-text-secondary">
             ${Math.abs(pnl < 0 ? pnl : 0).toFixed(0)} / ${absMax}
           </span>
@@ -52,7 +52,7 @@ export default function DailyPnLBar({
       {maxProfit && (
         <div>
           <div className="flex justify-between mb-1">
-            <span className="text-[10px] text-text-disabled">Objetivo día</span>
+            <span className="text-[10px] text-text-disabled">Daily target</span>
             <span className="text-[10px] font-mono text-text-secondary">
               ${pnl > 0 ? pnl.toFixed(0) : 0} / ${maxProfit}
             </span>
@@ -73,8 +73,8 @@ export default function DailyPnLBar({
           lossPct >= 0.9 ? "text-loss" : "text-warning"
         )}>
           {lossPct >= 0.9
-            ? "⛔ Cerca del stop diario — cierra la plataforma"
-            : "⚠ Más del 60% del DD diario consumido"}
+            ? "⛔ Near daily stop — close the platform"
+            : "⚠ More than 60% of daily DD consumed"}
         </p>
       )}
     </div>

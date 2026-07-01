@@ -25,7 +25,7 @@ const navItems = [
   { href: "/notebook", label: "Notebook", icon: NotebookPen },
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/ai-bot",   label: "AI Bot",   icon: Bot      },
-  { href: "/settings", label: "Cuentas",  icon: Settings },
+  { href: "/settings", label: "Accounts", icon: Settings },
 ];
 
 export default function Sidebar() {

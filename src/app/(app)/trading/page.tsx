@@ -55,7 +55,7 @@ export default function TradingPage() {
             {/* Order form */}
             <div className="card p-4">
               <p className="text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-3">
-                Nueva Orden
+                New Order
               </p>
               <OrderForm
                 onSymbolChange={handleSymbolChange}

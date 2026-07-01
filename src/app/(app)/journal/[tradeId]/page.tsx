@@ -71,8 +71,8 @@ type JournalEntry = {
   ai_analysis: string | null;
 };
 
-const EMOTIONS = ["Calmo","Confiado","Ansioso","FOMO","Vengativo","Aburrido","Impaciente","Enfocado","Dudoso","Eufórico"];
-const MISTAKES = ["Moví el SL","Cerré en pánico","Entré sin confluencias","Ignoré la narrativa","Sobredimensioné","Operé en noticia","FOMO","Revenge trade","No seguí TP1","Operé fuera de horario"];
+const EMOTIONS = ["Calm","Confident","Anxious","FOMO","Vengeful","Bored","Impatient","Focused","Doubtful","Euphoric"];
+const MISTAKES = ["Moved the SL","Closed in panic","Entered without confluences","Ignored the narrative","Oversized","Traded on news","FOMO","Revenge trade","Didn't follow TP1","Traded outside hours"];
 
 export default function TradeDetailPage() {
   const { tradeId } = useParams<{ tradeId: string }>();
@@ -160,17 +160,17 @@ export default function TradeDetailPage() {
   const hasCosts     = displaySwap !== 0 || displayFees !== 0;
 
   async function handleDelete() {
-    if (!confirm("¿Eliminar este trade? Esta acción no se puede deshacer.")) return;
+    if (!confirm("Delete this trade? This action cannot be undone.")) return;
     setDeleting(true);
     const { error } = await db.from("trades").delete().eq("id", tradeId);
-    if (error) { toast.error("Error al eliminar"); setDeleting(false); return; }
-    toast.success("Trade eliminado");
+    if (error) { toast.error("Error deleting"); setDeleting(false); return; }
+    toast.success("Trade deleted");
     router.push("/journal");
   }
 
   async function handleSave() {
     if (!trade || !userId) return;
-    if (!entryPrice) { toast.error("La entrada es obligatoria"); return; }
+    if (!entryPrice) { toast.error("Entry price is required"); return; }
     setSaving(true);
     try {
       const e = parseFloat(entryPrice);
@@ -249,9 +249,9 @@ export default function TradeDetailPage() {
         const { data: created } = await db.from("journal_entries").insert(jePayload).select().single();
         if (created) setEntry(e => ({ ...e, id: (created as { id: string }).id }));
       }
-      toast.success("Journal guardado");
+      toast.success("Journal saved");
     } catch {
-      toast.error("Error al guardar");
+      toast.error("Error saving");
     } finally {
       setSaving(false);
     }
@@ -261,7 +261,7 @@ export default function TradeDetailPage() {
     return (
       <div className="flex flex-col h-full overflow-hidden">
         <TopBar title="Trade" />
-        <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">Cargando…</div>
+        <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">Loading…</div>
       </div>
     );
   }
@@ -278,7 +278,7 @@ export default function TradeDetailPage() {
               onClick={() => router.back()}
               className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
             >
-              <ArrowLeft className="size-3.5" /> Volver al journal
+              <ArrowLeft className="size-3.5" /> Back to journal
             </button>
 
             {/* P&L card — live from editable fields */}
@@ -313,7 +313,7 @@ export default function TradeDetailPage() {
                 <div className="flex justify-center flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-white/10">
                   {displayGross != null && (
                     <span className="text-[10px] text-text-disabled">
-                      Bruto <span className="font-mono">{fmtCost(displayGross)}</span>
+                      Gross <span className="font-mono">{fmtCost(displayGross)}</span>
                     </span>
                   )}
                   {displaySwap !== 0 && (
@@ -334,14 +334,14 @@ export default function TradeDetailPage() {
             <div className="card-light p-3 space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-text-disabled block mb-1">Instrumento</label>
+                  <label className="text-[10px] text-text-disabled block mb-1">Instrument</label>
                   <select value={instrument} onChange={e => setInstrument(e.target.value)}
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent">
                     {INSTRUMENTS.map(i => <option key={i} value={i}>{i}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-text-disabled block mb-1">Dirección</label>
+                  <label className="text-[10px] text-text-disabled block mb-1">Direction</label>
                   <div className="grid grid-cols-2 gap-1">
                     {(["LONG","SHORT"] as const).map(d => (
                       <button key={d} type="button" onClick={() => setDirection(d)}
@@ -361,8 +361,8 @@ export default function TradeDetailPage() {
               {/* Editable prices */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "Entrada", value: entryPrice, set: setEntryPrice },
-                  { label: "Salida", value: exitPrice, set: setExitPrice },
+                  { label: "Entry", value: entryPrice, set: setEntryPrice },
+                  { label: "Exit", value: exitPrice, set: setExitPrice },
                   { label: "Stop Loss", value: sl, set: setSl },
                   { label: "Take Profit", value: tp, set: setTp },
                 ].map(({ label, value, set }) => (
@@ -378,12 +378,12 @@ export default function TradeDetailPage() {
               {/* Lotes + sesión */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-text-disabled block mb-1">Lotes</label>
+                  <label className="text-[10px] text-text-disabled block mb-1">Lots</label>
                   <input type="number" step="0.01" min="0.01" value={lotSize} onChange={e => setLotSize(e.target.value)}
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-accent" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-text-disabled block mb-1">Sesión</label>
+                  <label className="text-[10px] text-text-disabled block mb-1">Session</label>
                   <select value={session} onChange={e => setSession(e.target.value)}
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent">
                     {SESSIONS.map(s => <option key={s} value={s}>{s.replace("_"," ")}</option>)}
@@ -394,12 +394,12 @@ export default function TradeDetailPage() {
               {/* Tiempos */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-text-disabled block mb-1">Apertura</label>
+                  <label className="text-[10px] text-text-disabled block mb-1">Open</label>
                   <input type="datetime-local" value={openTime} onChange={e => setOpenTime(e.target.value)}
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-2 py-1.5 text-[11px] text-text-primary focus:outline-none focus:border-accent" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-text-disabled block mb-1">Cierre</label>
+                  <label className="text-[10px] text-text-disabled block mb-1">Close</label>
                   <input type="datetime-local" value={closeTime} onChange={e => setCloseTime(e.target.value)}
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-2 py-1.5 text-[11px] text-text-primary focus:outline-none focus:border-accent" />
                 </div>
@@ -407,11 +407,11 @@ export default function TradeDetailPage() {
 
               {/* Swap + Comisión */}
               <div>
-                <p className="text-[10px] text-text-disabled mb-1.5 uppercase tracking-wide">Costes</p>
+                <p className="text-[10px] text-text-disabled mb-1.5 uppercase tracking-wide">Costs</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] text-text-disabled block mb-1">
-                      Swap <span className="normal-case">(– si pagas)</span>
+                      Swap <span className="normal-case">(– if you pay)</span>
                     </label>
                     <input
                       type="number"
@@ -424,7 +424,7 @@ export default function TradeDetailPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-text-disabled block mb-1">
-                      Charges <span className="normal-case">(– siempre)</span>
+                      Charges <span className="normal-case">(– always)</span>
                     </label>
                     <input
                       type="number"
@@ -439,7 +439,7 @@ export default function TradeDetailPage() {
                 {/* Live net reminder */}
                 {preview && hasCosts && (
                   <p className="mt-1.5 text-[10px] text-text-disabled text-right">
-                    Neto: <span className={cn("font-mono", preview.net >= 0 ? "text-profit" : "text-loss")}>
+                    Net: <span className={cn("font-mono", preview.net >= 0 ? "text-profit" : "text-loss")}>
                       {fmtCost(preview.net)}
                     </span>
                   </p>
@@ -449,7 +449,7 @@ export default function TradeDetailPage() {
 
             {/* Followed plan */}
             <div className="card-light p-3 space-y-2">
-              <p className="text-xs text-text-secondary">¿Seguiste el plan?</p>
+              <p className="text-xs text-text-secondary">Did you follow the plan?</p>
               <div className="grid grid-cols-2 gap-2">
                 {([true, false] as const).map(v => (
                   <button key={String(v)} type="button"
@@ -461,7 +461,7 @@ export default function TradeDetailPage() {
                         : "bg-surface-hi border-border-light text-text-disabled"
                     )}
                   >
-                    {v ? "✓ Sí" : "✗ No"}
+                    {v ? "✓ Yes" : "✗ No"}
                   </button>
                 ))}
               </div>
@@ -469,7 +469,7 @@ export default function TradeDetailPage() {
 
             {/* Mistakes */}
             <div className="card-light p-3 space-y-2">
-              <p className="text-xs text-text-secondary">Errores cometidos</p>
+              <p className="text-xs text-text-secondary">Mistakes made</p>
               <div className="flex flex-wrap gap-1.5">
                 {MISTAKES.map(m => (
                   <button key={m} type="button"
@@ -491,9 +491,9 @@ export default function TradeDetailPage() {
 
             {/* Notes */}
             <div className="card-light p-3 space-y-2">
-              <p className="text-xs text-text-secondary">Notas</p>
+              <p className="text-xs text-text-secondary">Notes</p>
               <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="¿Qué pasó? ¿Qué harías diferente?"
+                placeholder="What happened? What would you do differently?"
                 rows={4}
                 className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent resize-none"
               />
@@ -503,14 +503,14 @@ export default function TradeDetailPage() {
               className="btn-action w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm"
             >
               <Save className="size-4" />
-              {saving ? "Guardando…" : "Guardar cambios"}
+              {saving ? "Saving…" : "Save changes"}
             </button>
 
             <button onClick={handleDelete} disabled={deleting}
               className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-loss/30 text-loss text-xs hover:bg-loss/10 transition-colors disabled:opacity-50"
             >
               <Trash2 className="size-3.5" />
-              {deleting ? "Eliminando…" : "Eliminar trade"}
+              {deleting ? "Deleting…" : "Delete trade"}
             </button>
           </div>
         </div>
@@ -520,11 +520,11 @@ export default function TradeDetailPage() {
 
           {/* Emociones */}
           <div className="card p-4 space-y-3">
-            <p className="section-title">Emociones</p>
+            <p className="section-title">Emotions</p>
             <div className="grid grid-cols-2 gap-6">
               {(["entry_emotion", "exit_emotion"] as const).map(field => (
                 <div key={field}>
-                  <p className="text-xs text-text-disabled mb-2">{field === "entry_emotion" ? "Al entrar" : "Al salir"}</p>
+                  <p className="text-xs text-text-disabled mb-2">{field === "entry_emotion" ? "On entry" : "On exit"}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {EMOTIONS.map(em => (
                       <button key={em} type="button"
@@ -545,18 +545,18 @@ export default function TradeDetailPage() {
 
           {/* Charts */}
           <div className="card p-4 space-y-4">
-            <p className="section-title">Screenshots de charts</p>
+            <p className="section-title">Chart screenshots</p>
             {([
-              { key: "hft_chart_url", label: "HFT — Alta temporalidad (1D / 4H)" },
-              { key: "mft_chart_url", label: "MFT — Media temporalidad (1H / 15M)" },
-              { key: "lft_chart_url", label: "LFT — Baja temporalidad (5M / 1M)" },
+              { key: "hft_chart_url", label: "HFT — High timeframe (1D / 4H)" },
+              { key: "mft_chart_url", label: "MFT — Mid timeframe (1H / 15M)" },
+              { key: "lft_chart_url", label: "LFT — Low timeframe (5M / 1M)" },
             ] as const).map(({ key, label }) => (
               <div key={key}>
                 <label className="text-[10px] text-text-disabled block mb-1.5">{label}</label>
                 <div className="flex gap-2">
                   <input type="url" value={entry[key] ?? ""}
                     onChange={e => setEntry(en => ({ ...en, [key]: e.target.value || null }))}
-                    placeholder="https://… URL de imagen o screenshot"
+                    placeholder="https://… Image or screenshot URL"
                     className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
                   />
                   {entry[key] && (
@@ -576,10 +576,10 @@ export default function TradeDetailPage() {
 
           {/* Revisión del plan */}
           <div className="card p-4 space-y-2">
-            <p className="section-title">Revisión del plan</p>
+            <p className="section-title">Plan review</p>
             <textarea value={entry.review_plan ?? ""}
               onChange={e => setEntry(en => ({ ...en, review_plan: e.target.value || null }))}
-              placeholder="¿Qué confluencias tenías? ¿El setup era válido según MATVARD? ¿Dónde estaba el precio respecto al DVA?"
+              placeholder="What confluences did you have? Was the setup valid per MATVARD? Where was price relative to DVA?"
               rows={4}
               className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent resize-none"
             />
@@ -587,10 +587,10 @@ export default function TradeDetailPage() {
 
           {/* Gestión */}
           <div className="card p-4 space-y-2">
-            <p className="section-title">Gestión del trade</p>
+            <p className="section-title">Trade management</p>
             <textarea value={entry.trade_management_notes ?? ""}
               onChange={e => setEntry(en => ({ ...en, trade_management_notes: e.target.value || null }))}
-              placeholder="¿Moviste el SL? ¿Cerraste parciales en TP1? ¿Cómo manejaste la posición durante el trade?"
+              placeholder="Did you move the SL? Did you close partials at TP1? How did you manage the position during the trade?"
               rows={4}
               className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent resize-none"
             />
@@ -599,13 +599,13 @@ export default function TradeDetailPage() {
           {/* AI Analysis */}
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="section-title">Análisis AI</p>
+              <p className="section-title">AI Analysis</p>
               <button
-                onClick={() => toast.info("Análisis AI disponible en el Paso 13")}
+                onClick={() => toast.info("AI Analysis available in Step 13")}
                 className="btn-action flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
               >
                 <Sparkles className="size-3" />
-                Generar análisis
+                Generate analysis
               </button>
             </div>
             {entry.ai_analysis ? (
@@ -614,7 +614,7 @@ export default function TradeDetailPage() {
               </div>
             ) : (
               <p className="text-xs text-text-disabled italic">
-                El análisis AI evaluará el setup, la gestión y las emociones usando contexto MATVARD completo.
+                AI analysis will evaluate the setup, management, and emotions using full MATVARD context.
               </p>
             )}
           </div>

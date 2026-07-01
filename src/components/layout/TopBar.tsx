@@ -15,7 +15,7 @@ export default function TopBar({ title }: TopBarProps) {
       <div className="flex items-center gap-3 ml-auto">
         <button
           className="relative size-8 flex items-center justify-center rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
-          aria-label="Notificaciones"
+          aria-label="Notifications"
         >
           <Bell className="size-4" />
         </button>

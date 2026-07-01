@@ -86,10 +86,10 @@ export default function NewTradePage() {
   }, [entryPrice, exitPrice, sl, direction]);
 
   async function handleSave() {
-    if (!userId) { toast.error("No autenticado"); return; }
-    if (!accountId) { toast.error("Sin cuenta activa — crea una cuenta primero"); return; }
-    if (!entryPrice) { toast.error("La entrada es obligatoria"); return; }
-    if (!openTime) { toast.error("La hora de apertura es obligatoria"); return; }
+    if (!userId) { toast.error("Not authenticated"); return; }
+    if (!accountId) { toast.error("No active account — create an account first"); return; }
+    if (!entryPrice) { toast.error("Entry price is required"); return; }
+    if (!openTime) { toast.error("Open time is required"); return; }
 
     setSaving(true);
     try {
@@ -140,10 +140,10 @@ export default function NewTradePage() {
       }).select().single();
 
       if (error) throw error;
-      toast.success("Trade registrado");
+      toast.success("Trade registered");
       router.push(`/journal/${(data as { id: string }).id}`);
     } catch {
-      toast.error("Error al guardar el trade");
+      toast.error("Error saving trade");
     } finally {
       setSaving(false);
     }
@@ -151,29 +151,29 @@ export default function NewTradePage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <TopBar title="Registrar trade" />
+      <TopBar title="Register trade" />
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-6 space-y-4">
 
           <button onClick={() => router.back()}
             className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors">
-            <ArrowLeft className="size-3.5" /> Volver al journal
+            <ArrowLeft className="size-3.5" /> Back to journal
           </button>
 
           {/* Instrumento + dirección */}
           <div className="card-light p-4 space-y-3">
-            <p className="section-title">Instrumento</p>
+            <p className="section-title">Instrument</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-text-disabled block mb-1.5">Par / Instrumento</label>
+                <label className="text-xs text-text-disabled block mb-1.5">Pair / Instrument</label>
                 <select value={instrument} onChange={e => setInstrument(e.target.value)}
                   className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
                   {INSTRUMENTS.map(i => <option key={i} value={i}>{i}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-text-disabled block mb-1.5">Dirección</label>
+                <label className="text-xs text-text-disabled block mb-1.5">Direction</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["LONG","SHORT"] as const).map(d => (
                     <button key={d} type="button" onClick={() => setDirection(d)}
@@ -193,11 +193,11 @@ export default function NewTradePage() {
 
           {/* Precios */}
           <div className="card-light p-4 space-y-3">
-            <p className="section-title">Precios</p>
+            <p className="section-title">Prices</p>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Entrada *", value: entryPrice, set: setEntryPrice },
-                { label: "Salida", value: exitPrice, set: setExitPrice },
+                { label: "Entry *", value: entryPrice, set: setEntryPrice },
+                { label: "Exit", value: exitPrice, set: setExitPrice },
                 { label: "Stop Loss", value: sl, set: setSl },
                 { label: "Take Profit", value: tp, set: setTp },
               ].map(({ label, value, set }) => (
@@ -226,29 +226,29 @@ export default function NewTradePage() {
 
           {/* Lotes + sesión + tiempos */}
           <div className="card-light p-4 space-y-3">
-            <p className="section-title">Detalles</p>
+            <p className="section-title">Details</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-text-disabled block mb-1.5">Lotes</label>
+                <label className="text-xs text-text-disabled block mb-1.5">Lots</label>
                 <input type="number" step="0.01" min="0.01" value={lotSize}
                   onChange={e => setLotSize(e.target.value)}
                   className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-accent" />
               </div>
               <div>
-                <label className="text-xs text-text-disabled block mb-1.5">Sesión</label>
+                <label className="text-xs text-text-disabled block mb-1.5">Session</label>
                 <select value={session} onChange={e => setSession(e.target.value as typeof SESSIONS[number])}
                   className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
                   {SESSIONS.map(s => <option key={s} value={s}>{s.replace("_"," ")}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-text-disabled block mb-1.5">Apertura *</label>
+                <label className="text-xs text-text-disabled block mb-1.5">Open *</label>
                 <input type="datetime-local" value={openTime}
                   onChange={e => setOpenTime(e.target.value)}
                   className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
               </div>
               <div>
-                <label className="text-xs text-text-disabled block mb-1.5">Cierre</label>
+                <label className="text-xs text-text-disabled block mb-1.5">Close</label>
                 <input type="datetime-local" value={closeTime}
                   onChange={e => setCloseTime(e.target.value)}
                   className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
@@ -257,13 +257,13 @@ export default function NewTradePage() {
             <div>
               <label className="text-xs text-text-disabled block mb-1.5">
                 Ticket MT5{" "}
-                <span className="text-text-disabled/60 font-normal">(opcional — evita duplicados si el EA también cierra este trade)</span>
+                <span className="text-text-disabled/60 font-normal">(optional — avoids duplicates if the EA also closes this trade)</span>
               </label>
               <input
                 type="text"
                 value={mt5Ticket}
                 onChange={e => setMt5Ticket(e.target.value)}
-                placeholder="ej. 108302089"
+                placeholder="e.g. 108302089"
                 className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
               />
             </div>
@@ -271,9 +271,9 @@ export default function NewTradePage() {
 
           {/* Plan + notas */}
           <div className="card-light p-4 space-y-3">
-            <p className="section-title">Evaluación</p>
+            <p className="section-title">Evaluation</p>
             <div>
-              <p className="text-xs text-text-disabled mb-2">¿Seguiste el plan?</p>
+              <p className="text-xs text-text-disabled mb-2">Did you follow the plan?</p>
               <div className="grid grid-cols-3 gap-2">
                 {([true, false, null] as const).map(v => (
                   <button key={String(v)} type="button"
@@ -286,15 +286,15 @@ export default function NewTradePage() {
                           : "bg-surface-2 border-accent/30 text-accent"
                         : "bg-surface-2 border-border text-text-disabled"
                     )}>
-                    {v === true ? "✓ Sí" : v === false ? "✗ No" : "Sin evaluar"}
+                    {v === true ? "✓ Yes" : v === false ? "✗ No" : "Not evaluated"}
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-xs text-text-disabled block mb-1.5">Notas</label>
+              <label className="text-xs text-text-disabled block mb-1.5">Notes</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Setup, confluencias, contexto del mercado…"
+                placeholder="Setup, confluences, market context…"
                 rows={3}
                 className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent resize-none" />
             </div>
@@ -303,7 +303,7 @@ export default function NewTradePage() {
           <button onClick={handleSave} disabled={saving}
             className="btn-action w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm">
             <Save className="size-4" />
-            {saving ? "Guardando…" : "Guardar trade"}
+            {saving ? "Saving…" : "Save trade"}
           </button>
         </div>
       </div>

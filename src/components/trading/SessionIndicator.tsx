@@ -61,7 +61,7 @@ export default function SessionIndicator() {
       isTradeableSession ? "border-accent/30" : "border-border"
     )}>
       <div className="flex items-center justify-between">
-        <p className="text-xs text-text-secondary">Sesión</p>
+        <p className="text-xs text-text-secondary">Session</p>
         <div className={cn(
           "size-2 rounded-full",
           isTradeableSession ? "bg-profit shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-surface-2"
@@ -69,12 +69,12 @@ export default function SessionIndicator() {
       </div>
 
       {isWeekend ? (
-        <p className="text-xs text-text-disabled">Mercado cerrado (fin de semana)</p>
+        <p className="text-xs text-text-disabled">Market closed (weekend)</p>
       ) : active.length === 0 ? (
         <div>
-          <p className="text-xs text-text-disabled">Fuera de sesión</p>
+          <p className="text-xs text-text-disabled">Outside session</p>
           {nextLondon && (
-            <p className="text-[10px] text-text-disabled mt-0.5">London abre en {nextLondon}</p>
+            <p className="text-[10px] text-text-disabled mt-0.5">London opens in {nextLondon}</p>
           )}
         </div>
       ) : (
@@ -94,11 +94,11 @@ export default function SessionIndicator() {
       )}
 
       {isFriday && isTradeableSession && (
-        <p className="text-[10px] text-warning">Viernes — solo setups A+</p>
+        <p className="text-[10px] text-warning">Friday — A+ setups only</p>
       )}
 
       {!isTradeableSession && !isWeekend && active.length > 0 && (
-        <p className="text-[10px] text-text-disabled">Tokyo — no operar</p>
+        <p className="text-[10px] text-text-disabled">Tokyo — do not trade</p>
       )}
     </div>
   );

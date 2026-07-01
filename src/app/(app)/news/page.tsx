@@ -11,7 +11,7 @@ import type { NewsEvent } from "@/app/api/news/route";
 
 type View = "CALENDAR" | "EUROPEAN" | "AMERICAN" | "ASIAN";
 const VIEW_TABS: { id: View; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "CALENDAR", label: "Calendario", icon: CalendarRange },
+  { id: "CALENDAR", label: "Calendar", icon: CalendarRange },
   { id: "EUROPEAN", label: "European Open", icon: Sunrise },
   { id: "AMERICAN", label: "American", icon: Sun },
   { id: "ASIAN", label: "Asian", icon: Moon },
@@ -19,10 +19,10 @@ const VIEW_TABS: { id: View; label: string; icon: React.ComponentType<{ classNam
 
 const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
 const IMPACT_META: Record<NewsEvent["impact"], { label: string; dot: string; badge: string }> = {
-  HIGH:    { label: "Alto",    dot: "bg-loss",    badge: "bg-loss/15 text-loss border-loss/30" },
-  MEDIUM:  { label: "Medio",   dot: "bg-warning", badge: "bg-warning/15 text-warning border-warning/30" },
-  LOW:     { label: "Bajo",    dot: "bg-info",    badge: "bg-info/15 text-info border-info/30" },
-  HOLIDAY: { label: "Feriado", dot: "bg-text-disabled", badge: "bg-surface-2 text-text-disabled border-border" },
+  HIGH:    { label: "High",    dot: "bg-loss",    badge: "bg-loss/15 text-loss border-loss/30" },
+  MEDIUM:  { label: "Medium",  dot: "bg-warning", badge: "bg-warning/15 text-warning border-warning/30" },
+  LOW:     { label: "Low",     dot: "bg-info",    badge: "bg-info/15 text-info border-info/30" },
+  HOLIDAY: { label: "Holiday", dot: "bg-text-disabled", badge: "bg-surface-2 text-text-disabled border-border" },
 };
 
 function fmtTime(iso: string) {
@@ -76,7 +76,7 @@ export default function NewsPage() {
       if (data.error) setError(data.error);
       setEvents(data.events ?? []);
     } catch {
-      setError("No se pudo cargar el calendario");
+      setError("Could not load the calendar");
     } finally {
       setLoading(false);
     }
@@ -125,9 +125,9 @@ export default function NewsPage() {
   function minutesUntil(iso: string) {
     const diff = new Date(iso).getTime() - Date.now();
     const mins = Math.round(diff / 60000);
-    if (mins < 60) return `en ${mins} min`;
+    if (mins < 60) return `in ${mins} min`;
     const h = Math.floor(mins / 60);
-    return `en ${h}h ${mins % 60}m`;
+    return `in ${h}h ${mins % 60}m`;
   }
 
   return (
@@ -166,7 +166,7 @@ export default function NewsPage() {
           <div className="card-light p-4 space-y-3">
             <div className="flex items-center gap-2">
               <AlertOctagon className="size-4 text-warning" />
-              <p className="text-sm font-medium text-text-primary">Próximas 24 horas · alto/medio impacto</p>
+              <p className="text-sm font-medium text-text-primary">Next 24 hours · high/medium impact</p>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {upcoming.slice(0, 6).map(e => (
@@ -190,17 +190,17 @@ export default function NewsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Filter className="size-3.5 text-text-secondary" />
-              <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">Filtros</p>
+              <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">Filters</p>
             </div>
             <button onClick={load} disabled={loading}
               className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-accent transition-colors disabled:opacity-50">
               <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-              Actualizar
+              Refresh
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-text-disabled uppercase tracking-wider w-16">Impacto</span>
+            <span className="text-[10px] text-text-disabled uppercase tracking-wider w-16">Impact</span>
             {(Object.keys(IMPACT_META) as NewsEvent["impact"][]).filter(i => i !== "HOLIDAY").map(i => (
               <button key={i} onClick={() => toggleImpact(i)}
                 className={cn(
@@ -214,7 +214,7 @@ export default function NewsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-text-disabled uppercase tracking-wider w-16">Moneda</span>
+            <span className="text-[10px] text-text-disabled uppercase tracking-wider w-16">Currency</span>
             {CURRENCIES.map(c => (
               <button key={c} onClick={() => toggleCurrency(c)}
                 className={cn(
@@ -228,7 +228,7 @@ export default function NewsPage() {
             ))}
             {currencyFilter.length > 0 && (
               <button onClick={() => setCurrencyFilter([])} className="text-[11px] text-text-disabled hover:text-text-secondary underline">
-                limpiar
+                clear
               </button>
             )}
           </div>
@@ -236,18 +236,18 @@ export default function NewsPage() {
 
         {/* ── Calendar ──────────────────────────────────── */}
         {loading ? (
-          <div className="card p-12 text-center text-text-disabled text-sm">Cargando calendario…</div>
+          <div className="card p-12 text-center text-text-disabled text-sm">Loading calendar…</div>
         ) : error ? (
           <div className="card p-8 text-center space-y-2">
-            <p className="text-sm text-loss">No se pudo cargar el calendario económico</p>
+            <p className="text-sm text-loss">Could not load the economic calendar</p>
             <p className="text-xs text-text-disabled">{error}</p>
             <button onClick={load} className="btn-action inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs mt-2">
-              <RefreshCw className="size-3.5" /> Reintentar
+              <RefreshCw className="size-3.5" /> Retry
             </button>
           </div>
         ) : grouped.length === 0 ? (
           <div className="card p-12 text-center text-text-disabled text-sm">
-            Sin eventos con los filtros actuales. Ajustá los filtros arriba.
+            No events with current filters. Adjust the filters above.
           </div>
         ) : (
           <div className="space-y-4">
@@ -260,9 +260,9 @@ export default function NewsPage() {
                   <CalendarDays className="size-3.5 text-text-secondary" />
                   <span className="text-xs font-medium text-text-primary capitalize">{day}</span>
                   {dayEvents.some(e => isToday(e.date)) && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent">HOY</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent">TODAY</span>
                   )}
-                  <span className="ml-auto text-[10px] text-text-disabled">{dayEvents.length} eventos</span>
+                  <span className="ml-auto text-[10px] text-text-disabled">{dayEvents.length} events</span>
                 </div>
                 <div className="divide-y divide-border/50">
                   {dayEvents.map(e => (
@@ -298,7 +298,7 @@ export default function NewsPage() {
         )}
 
         <p className="text-[10px] text-text-disabled text-center pb-2">
-          Datos del calendario semanal de Forex Factory · se actualiza cada 30 min
+          Weekly Forex Factory calendar data · updates every 30 min
         </p>
         </>}
       </main>

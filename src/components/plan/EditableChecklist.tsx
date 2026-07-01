@@ -56,10 +56,10 @@ function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
           onBlur={commitEdit}
           className="flex-1 bg-surface-2 border border-accent rounded-md px-2.5 py-1 text-xs text-text-primary focus:outline-none"
         />
-        <button type="button" onClick={commitEdit} className="shrink-0 text-profit hover:text-profit/80 transition-colors" title="Guardar">
+        <button type="button" onClick={commitEdit} className="shrink-0 text-profit hover:text-profit/80 transition-colors" title="Save">
           <Check className="size-3.5" />
         </button>
-        <button type="button" onClick={cancelEdit} className="shrink-0 text-text-disabled hover:text-text-secondary transition-colors" title="Cancelar">
+        <button type="button" onClick={cancelEdit} className="shrink-0 text-text-disabled hover:text-text-secondary transition-colors" title="Cancel">
           <X className="size-3.5" />
         </button>
       </div>
@@ -75,7 +75,7 @@ function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
           "mt-0.5 shrink-0 transition-colors",
           item.enabled ? "text-accent" : "text-text-disabled"
         )}
-        title={item.enabled ? "Desactivar" : "Activar"}
+        title={item.enabled ? "Disable" : "Enable"}
       >
         {item.enabled
           ? <CheckSquare className="size-4" />
@@ -97,7 +97,7 @@ function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
             type="button"
             onClick={() => { setDraft(item.label); setEditing(true); }}
             className="p-1 rounded text-text-disabled hover:text-accent hover:bg-accent/10 transition-colors"
-            title="Editar texto"
+            title="Edit text"
           >
             <Pencil className="size-3" />
           </button>
@@ -105,7 +105,7 @@ function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
             type="button"
             onClick={onDelete}
             className="p-1 rounded text-text-disabled hover:text-loss hover:bg-loss/10 transition-colors"
-            title="Eliminar"
+            title="Delete"
           >
             <Trash2 className="size-3" />
           </button>
@@ -127,7 +127,7 @@ interface EditableChecklistProps {
 export default function EditableChecklist({
   items,
   onChange,
-  addPlaceholder = "Agregar ítem...",
+  addPlaceholder = "Add item...",
   editMode = false,
 }: EditableChecklistProps) {
   const [newLabel, setNewLabel] = useState("");
@@ -159,7 +159,7 @@ export default function EditableChecklist({
   return (
     <div className="space-y-0.5">
       {items.length === 0 && (
-        <p className="text-xs text-text-disabled py-2 text-center">Sin ítems — agrega uno abajo</p>
+        <p className="text-xs text-text-disabled py-2 text-center">No items — add one below</p>
       )}
 
       {items.map((item) => (
@@ -192,13 +192,13 @@ export default function EditableChecklist({
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
           >
             <Plus className="size-3" />
-            Agregar
+            Add
           </button>
         </div>
       )}
 
       {items.length > 0 && (
-        <p className="text-[10px] text-text-disabled pt-1">{enabledCount}/{items.length} activos</p>
+        <p className="text-[10px] text-text-disabled pt-1">{enabledCount}/{items.length} active</p>
       )}
     </div>
   );

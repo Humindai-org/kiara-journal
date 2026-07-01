@@ -144,9 +144,9 @@ export default function PositionsTable() {
   }, [trades, filters]);
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "open",    label: "Abiertas" },
-    { key: "pending", label: "Sin journal" },
-    { key: "closed",  label: "Cerradas (7d)" },
+    { key: "open",    label: "Open" },
+    { key: "pending", label: "Not journaled" },
+    { key: "closed",  label: "Closed (7d)" },
   ];
 
   const decimals = (instrument: string) =>
@@ -195,10 +195,10 @@ export default function PositionsTable() {
                 ? "bg-accent/20 text-accent"
                 : "text-text-secondary hover:text-text-primary"
             )}
-            title="Filtros"
+            title="Filters"
           >
             <SlidersHorizontal className="size-3" />
-            Filtros
+            Filters
             {activeFilterCount > 0 && (
               <span className="bg-accent text-bg text-[9px] font-bold px-1 py-0.5 rounded-full leading-none">
                 {activeFilterCount}
@@ -208,7 +208,7 @@ export default function PositionsTable() {
           <button
             onClick={refresh}
             className="p-1.5 text-text-disabled hover:text-text-primary transition-colors"
-            title="Actualizar"
+            title="Refresh"
           >
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </button>
@@ -220,7 +220,7 @@ export default function PositionsTable() {
         <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border bg-surface-2/40 shrink-0">
           <input
             type="text"
-            placeholder="Par…"
+            placeholder="Pair…"
             value={filters.par}
             onChange={e => setFilters(f => ({ ...f, par: e.target.value }))}
             className="h-6 w-20 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light placeholder:text-text-disabled focus:outline-none focus:border-accent"
@@ -236,7 +236,7 @@ export default function PositionsTable() {
             onChange={e => setFilters(f => ({ ...f, direction: e.target.value as Filters["direction"] }))}
             className="h-6 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light focus:outline-none focus:border-accent"
           >
-            <option value="">Dir. (todas)</option>
+            <option value="">Dir. (all)</option>
             <option value="LONG">LONG</option>
             <option value="SHORT">SHORT</option>
           </select>
@@ -245,13 +245,13 @@ export default function PositionsTable() {
             onChange={e => setFilters(f => ({ ...f, resultado: e.target.value as Filters["resultado"] }))}
             className="h-6 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light focus:outline-none focus:border-accent"
           >
-            <option value="">P&amp;L (todos)</option>
-            <option value="pos">Ganadoras</option>
-            <option value="neg">Perdedoras</option>
+            <option value="">P&amp;L (all)</option>
+            <option value="pos">Winners</option>
+            <option value="neg">Losers</option>
           </select>
           <input
             type="number"
-            placeholder="Vol. mín…"
+            placeholder="Min vol…"
             value={filters.volMin}
             step="0.01"
             min="0"
@@ -271,7 +271,7 @@ export default function PositionsTable() {
               className="flex items-center gap-1 h-6 px-2 text-[10px] text-text-secondary hover:text-text-primary bg-surface-hi rounded border border-border-light transition-colors"
             >
               <X className="size-3" />
-              Limpiar
+              Clear
             </button>
           )}
         </div>
@@ -280,22 +280,22 @@ export default function PositionsTable() {
       {/* Content */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-text-disabled text-xs">
-          Cargando…
+          Loading…
         </div>
       ) : filteredTrades.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">
           {active
-            ? "Sin resultados con estos filtros"
-            : tab === "open"    ? "Sin posiciones abiertas"
-            : tab === "pending" ? "Todos los trades están journalizados ✓"
-            :                    "Sin trades en los últimos 7 días"}
+            ? "No results with these filters"
+            : tab === "open"    ? "No open positions"
+            : tab === "pending" ? "All trades are journaled ✓"
+            :                    "No trades in the last 7 days"}
         </div>
       ) : (
         <div className="flex-1 overflow-x-auto overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-surface z-10">
               <tr className="border-b border-border">
-                {["Par", "Dir.", "Lotes", "Entrada", "Salida", "SL", "TP", "P&L", "R", "Chg%", "Fecha/Hora", "Dur.", ""].map((h) => (
+                {["Pair", "Dir.", "Lots", "Entry", "Exit", "SL", "TP", "P&L", "R", "Chg%", "Date/Time", "Dur.", ""].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-left text-text-secondary font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -375,7 +375,7 @@ export default function PositionsTable() {
                           hasJournal ? "text-text-disabled hover:text-text-primary" : "text-accent hover:text-accent/70"
                         )}
                       >
-                        {hasJournal ? "Ver" : "Journalizar"}
+                        {hasJournal ? "View" : "Journalize"}
                         <ExternalLink className="size-3" />
                       </Link>
                     </td>
@@ -447,7 +447,7 @@ export default function PositionsTable() {
 
               {/* Net P&L — authoritative */}
               <div className="text-center mb-4">
-                <p className="text-[10px] text-text-disabled uppercase tracking-wider mb-1">Neto (oficial)</p>
+                <p className="text-[10px] text-text-disabled uppercase tracking-wider mb-1">Net (official)</p>
                 <p className={cn(
                   "text-3xl font-mono font-bold tabular-nums tracking-tight",
                   (t.net_pnl ?? 0) >= 0 ? "text-profit" : "text-loss"
@@ -460,7 +460,7 @@ export default function PositionsTable() {
               {t.gross_pnl != null && (
                 <div className="space-y-2 border-t border-border pt-3">
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Bruto</span>
+                    <span className="text-text-secondary">Gross</span>
                     <span className={cn("font-mono", t.gross_pnl >= 0 ? "text-profit" : "text-loss")}>
                       {t.gross_pnl >= 0 ? "+" : ""}${t.gross_pnl.toFixed(2)}
                     </span>
@@ -492,7 +492,7 @@ export default function PositionsTable() {
                   {roundingDiff > 0.01 && (
                     <div className="pt-2 border-t border-border/60 space-y-0.5">
                       <div className="flex justify-between text-[10px] text-text-disabled">
-                        <span>Suma componentes</span>
+                        <span>Component sum</span>
                         <span className="font-mono">{componentSum >= 0 ? "+" : ""}${componentSum.toFixed(2)}</span>
                       </div>
                       <p className="text-[10px] text-text-disabled leading-snug">

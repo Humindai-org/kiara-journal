@@ -73,7 +73,7 @@ export default function SettingsPage() {
 
   async function handleAdd() {
     if (!form.name || !form.initial_balance) {
-      toast.error("Nombre y balance inicial son obligatorios");
+      toast.error("Name and initial balance are required");
       return;
     }
     setSaving(true);
@@ -87,7 +87,7 @@ export default function SettingsPage() {
     });
     const json = await res.json();
     if (!res.ok) { toast.error(json.error); setSaving(false); return; }
-    toast.success("Cuenta creada");
+    toast.success("Account created");
     setForm({ ...EMPTY_FORM });
     setAdding(false);
     setSaving(false);
@@ -98,8 +98,8 @@ export default function SettingsPage() {
     setRecalcId(accountId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).rpc("recalculate_account_balance", { p_account_id: accountId });
-    if (error) { toast.error("Error al recalcular"); }
-    else { toast.success("Balance actualizado"); await load(); }
+    if (error) { toast.error("Error recalculating"); }
+    else { toast.success("Balance updated"); await load(); }
     setRecalcId(null);
   }
 
@@ -123,7 +123,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <TopBar title="Cuentas" />
+      <TopBar title="Accounts" />
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto p-6 space-y-6">
@@ -131,9 +131,9 @@ export default function SettingsPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-text-primary">Mis cuentas</h2>
+              <h2 className="text-base font-semibold text-text-primary">My accounts</h2>
               <p className="text-xs text-text-disabled mt-0.5">
-                Conectá todas tus cuentas de trading para hacer tracking en un solo lugar
+                Connect all your trading accounts to track them in one place
               </p>
             </div>
             <button
@@ -141,17 +141,17 @@ export default function SettingsPage() {
               className="btn-action flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs"
             >
               {adding ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
-              {adding ? "Cancelar" : "Nueva cuenta"}
+              {adding ? "Cancel" : "New account"}
             </button>
           </div>
 
           {/* Add account form */}
           {adding && (
             <div className="card p-4 space-y-4 border-accent/30">
-              <p className="text-xs font-medium text-accent uppercase tracking-wider">Nueva cuenta</p>
+              <p className="text-xs font-medium text-accent uppercase tracking-wider">New account</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Nombre *</label>
+                  <label className="text-xs text-text-disabled block mb-1.5">Name *</label>
                   <input
                     value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -160,7 +160,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Tipo *</label>
+                  <label className="text-xs text-text-disabled block mb-1.5">Type *</label>
                   <select
                     value={form.type}
                     onChange={e => setForm(f => ({ ...f, type: e.target.value as AccountType }))}
@@ -181,7 +181,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Número de cuenta</label>
+                  <label className="text-xs text-text-disabled block mb-1.5">Account number</label>
                   <input
                     value={form.account_number}
                     onChange={e => setForm(f => ({ ...f, account_number: e.target.value }))}
@@ -190,7 +190,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Balance inicial *</label>
+                  <label className="text-xs text-text-disabled block mb-1.5">Initial balance *</label>
                   <input
                     type="number"
                     value={form.initial_balance}
@@ -200,7 +200,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Moneda</label>
+                  <label className="text-xs text-text-disabled block mb-1.5">Currency</label>
                   <select
                     value={form.currency}
                     onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
@@ -215,14 +215,14 @@ export default function SettingsPage() {
                 disabled={saving}
                 className="btn-action w-full py-2.5 rounded-lg text-sm"
               >
-                {saving ? "Guardando…" : "Crear cuenta"}
+                {saving ? "Saving…" : "Create account"}
               </button>
             </div>
           )}
 
           {/* Account list */}
           {loading ? (
-            <div className="text-center py-12 text-text-disabled text-sm">Cargando…</div>
+            <div className="text-center py-12 text-text-disabled text-sm">Loading…</div>
           ) : (
             <div className="space-y-3">
               {accounts.map(acc => {
@@ -244,7 +244,7 @@ export default function SettingsPage() {
                           </span>
                           {isActive && (
                             <span className="text-[9px] font-medium bg-accent/10 text-accent px-1.5 py-0.5 rounded-full">
-                              Activa
+                              Active
                             </span>
                           )}
                         </div>
@@ -278,10 +278,10 @@ export default function SettingsPage() {
                           onClick={() => handleRecalculate(acc.id)}
                           disabled={recalcId === acc.id}
                           className="flex items-center gap-1 text-[10px] text-text-disabled hover:text-text-primary transition-colors"
-                          title="Recalcular balance desde trades"
+                          title="Recalculate balance from trades"
                         >
                           <RefreshCw className={cn("size-3", recalcId === acc.id && "animate-spin")} />
-                          Recalcular
+                          Recalculate
                         </button>
                         {acc.last_synced_at && (
                           <span className="text-[10px] text-text-disabled">
@@ -296,7 +296,7 @@ export default function SettingsPage() {
                           className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/70 transition-colors"
                         >
                           <Check className="size-3" />
-                          Activar
+                          Activate
                         </button>
                       )}
                     </div>
@@ -304,7 +304,7 @@ export default function SettingsPage() {
                     {/* MT5 webhook info */}
                     {acc.type === "MT5" && acc.webhook_token && (
                       <div className="pt-2 border-t border-border">
-                        <p className="text-[10px] text-text-disabled mb-1.5">Configuración EA (MT5)</p>
+                        <p className="text-[10px] text-text-disabled mb-1.5">EA Configuration (MT5)</p>
                         <div className="space-y-1">
                           {[
                             { label: "WebhookURL", value: `${typeof window !== "undefined" ? window.location.origin : ""}/api/mt5/webhook` },
@@ -314,10 +314,10 @@ export default function SettingsPage() {
                               <span className="text-[9px] text-text-disabled w-24 shrink-0">{label}</span>
                               <code className="text-[9px] text-text-secondary flex-1 truncate font-mono">{value}</code>
                               <button
-                                onClick={() => { navigator.clipboard.writeText(value); toast.success("Copiado"); }}
+                                onClick={() => { navigator.clipboard.writeText(value); toast.success("Copied"); }}
                                 className="text-[9px] text-accent hover:text-accent/70 shrink-0"
                               >
-                                Copiar
+                                Copy
                               </button>
                             </div>
                           ))}

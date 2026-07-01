@@ -21,8 +21,8 @@ type Trade = {
   followed_plan: boolean | null;
 };
 
-const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const DAYS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 function firstDayOfMonth(y: number, m: number) {
   return (new Date(y, m, 1).getDay() + 6) % 7; // Monday = 0
@@ -78,11 +78,11 @@ export default function JournalPage() {
 
   async function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (!confirm("¿Eliminar este trade? Esta acción no se puede deshacer.")) return;
+    if (!confirm("Delete this trade? This action cannot be undone.")) return;
     const { error } = await db.from("trades").delete().eq("id", id);
-    if (error) { toast.error("Error al eliminar"); return; }
+    if (error) { toast.error("Error deleting"); return; }
     setTrades(prev => prev.filter(t => t.id !== id));
-    toast.success("Trade eliminado");
+    toast.success("Trade deleted");
   }
 
   function prevMonth() {
@@ -153,7 +153,7 @@ export default function JournalPage() {
               className="btn-action flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs"
             >
               <Plus className="size-3.5" />
-              Registrar trade
+              Register trade
             </button>
           </div>
 
@@ -235,13 +235,13 @@ export default function JournalPage() {
 
           {!loading && trades.length === 0 && (
             <div className="text-center mt-16 space-y-3">
-              <p className="text-sm text-text-disabled">Sin trades este mes</p>
+              <p className="text-sm text-text-disabled">No trades this month</p>
               <button
                 onClick={() => router.push("/journal/new")}
                 className="btn-action inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm"
               >
                 <Plus className="size-4" />
-                Registrar primer trade
+                Register first trade
               </button>
             </div>
           )}
@@ -283,7 +283,7 @@ export default function JournalPage() {
                       <button
                         onClick={(e) => handleDelete(t.id, e)}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-disabled hover:text-loss hover:bg-loss/10 transition-all"
-                        title="Eliminar trade"
+                        title="Delete trade"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
@@ -302,7 +302,7 @@ export default function JournalPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center p-6 text-center">
               <p className="text-xs text-text-disabled leading-relaxed">
-                {selectedDay ? "Sin trades este día" : "Seleccioná un día con trades para verlos aquí"}
+                {selectedDay ? "No trades this day" : "Select a day with trades to see them here"}
               </p>
             </div>
           )}

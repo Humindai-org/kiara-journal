@@ -100,7 +100,7 @@ function DisciplineGauge({ rate }: { rate: number }) {
       </svg>
       <div className="absolute flex flex-col items-center">
         <span className="text-2xl font-mono font-bold text-text-primary">{rate.toFixed(0)}%</span>
-        <span className="text-[10px] text-text-disabled">siguió plan</span>
+        <span className="text-[10px] text-text-disabled">followed plan</span>
       </div>
     </div>
   );
@@ -190,7 +190,7 @@ export default function DashboardPage() {
     return (
       <div className="flex flex-col h-full overflow-hidden">
         <TopBar title="Dashboard" />
-        <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">Cargando…</div>
+        <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">Loading…</div>
       </div>
     );
   }
@@ -209,26 +209,26 @@ export default function DashboardPage() {
           <KpiCard label="Balance" value={`$${fmtUsd(stats.balance)}`} sub={account?.name ?? "—"} icon={Activity} />
           <KpiCard
             label="P&L total" value={`$${fmtUsd(stats.totalPnl, true)}`}
-            sub={`${stats.tradeCount} trades cerrados`}
+            sub={`${stats.tradeCount} closed trades`}
             color={stats.totalPnl >= 0 ? "text-profit" : "text-loss"}
             icon={stats.totalPnl >= 0 ? TrendingUp : TrendingDown}
           />
           <KpiCard
             label="Win rate" value={hasData ? `${stats.winRate.toFixed(0)}%` : "—"}
-            sub={hasData ? `${stats.winCount}W · ${stats.lossCount}L` : "Sin trades"}
+            sub={hasData ? `${stats.winCount}W · ${stats.lossCount}L` : "No trades"}
             color={stats.winRate >= 50 ? "text-profit" : stats.winRate > 0 ? "text-warning" : "text-text-secondary"}
             icon={Percent}
           />
           <KpiCard
             label="Profit factor"
             value={hasData ? (stats.profitFactor === Infinity ? "∞" : stats.profitFactor.toFixed(2)) : "—"}
-            sub={hasData ? "ganancia / pérdida" : "Sin trades"}
+            sub={hasData ? "gain / loss" : "No trades"}
             color={stats.profitFactor >= 1.5 ? "text-profit" : stats.profitFactor >= 1 ? "text-warning" : stats.profitFactor > 0 ? "text-loss" : "text-text-secondary"}
             icon={Award}
           />
           <KpiCard
             label="Avg R" value={hasData ? `${stats.avgR >= 0 ? "+" : ""}${stats.avgR.toFixed(2)}R` : "—"}
-            sub={hasData ? `Expectancy $${fmtUsd(stats.expectancy, true)}` : "Sin trades"}
+            sub={hasData ? `Expectancy $${fmtUsd(stats.expectancy, true)}` : "No trades"}
             color={stats.avgR >= 0 ? "text-profit" : "text-loss"}
             icon={Target}
           />
@@ -239,17 +239,17 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Target className="size-4 text-accent" />
-              <p className="text-sm font-medium text-text-primary">Progreso Fase 2</p>
+              <p className="text-sm font-medium text-text-primary">Phase 2 Progress</p>
             </div>
             <span className="text-xs text-text-secondary">
-              ${fmtUsd(Math.max(0, stats.totalPnl))} / ${fmtUsd(PROFIT_TARGET)} objetivo
+              ${fmtUsd(Math.max(0, stats.totalPnl))} / ${fmtUsd(PROFIT_TARGET)} target
             </span>
           </div>
           <div className="h-2.5 bg-surface-hi rounded-full overflow-hidden">
             <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${stats.progressToTarget}%` }} />
           </div>
           <div className="flex items-center justify-between mt-2">
-            <span className="text-[11px] text-text-disabled">{stats.progressToTarget.toFixed(1)}% del objetivo</span>
+            <span className="text-[11px] text-text-disabled">{stats.progressToTarget.toFixed(1)}% of target</span>
             <span className={cn("text-[11px]", stats.maxDD > DD_LIMIT * 0.7 ? "text-loss" : "text-text-disabled")}>
               Max DD: ${fmtUsd(stats.maxDD)} / ${fmtUsd(DD_LIMIT)}
             </span>
@@ -260,7 +260,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2 card p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-text-primary">Curva de equity</p>
+              <p className="text-sm font-medium text-text-primary">Equity curve</p>
               {hasData && (
                 <span className="text-xs font-mono text-text-secondary">
                   {stats.equity[0]?.date} → {stats.equity[stats.equity.length - 1]?.date}
@@ -270,7 +270,7 @@ export default function DashboardPage() {
             {hasData ? (
               <EquityCurve data={stats.equity} />
             ) : (
-              <div className="h-[240px] flex items-center justify-center text-text-disabled text-sm">Sin datos de trades aún</div>
+              <div className="h-[240px] flex items-center justify-center text-text-disabled text-sm">No trade data yet</div>
             )}
           </div>
 
@@ -278,7 +278,7 @@ export default function DashboardPage() {
           <div className="card-light p-4 space-y-4">
             <div className="flex items-center gap-2">
               <Shield className="size-4 text-accent" />
-              <p className="text-sm font-medium text-text-primary">Disciplina</p>
+              <p className="text-sm font-medium text-text-primary">Discipline</p>
             </div>
             {hasData ? (
               <>
@@ -287,28 +287,28 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Trades evaluados</span>
+                    <span className="text-text-secondary">Evaluated trades</span>
                     <span className="font-mono text-text-primary">{stats.evaluatedCount}/{stats.tradeCount}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Avg ganador</span>
+                    <span className="text-text-secondary">Avg winner</span>
                     <span className="font-mono text-profit">${fmtUsd(stats.avgWin)}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Avg perdedor</span>
+                    <span className="text-text-secondary">Avg loser</span>
                     <span className="font-mono text-loss">-${fmtUsd(stats.avgLoss)}</span>
                   </div>
                 </div>
                 {stats.disciplineRate < 80 && stats.evaluatedCount > 0 && (
                   <div className="flex items-start gap-1.5 text-[11px] text-warning bg-warning/10 rounded-lg p-2">
                     <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
-                    <span>Disciplina por debajo del 80%. Revisá los trades donde no seguiste el plan.</span>
+                    <span>Discipline below 80%. Review the trades where you didn&apos;t follow the plan.</span>
                   </div>
                 )}
               </>
             ) : (
               <div className="h-[200px] flex items-center justify-center text-text-disabled text-xs text-center">
-                Evaluá tus trades en el journal para ver tu disciplina
+                Evaluate your trades in the journal to see your discipline
               </div>
             )}
           </div>
@@ -318,7 +318,7 @@ export default function DashboardPage() {
         {hasData && (
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4">
-              <p className="text-sm font-medium text-text-primary mb-4">P&L por sesión</p>
+              <p className="text-sm font-medium text-text-primary mb-4">P&L by session</p>
               <div className="space-y-3">
                 {stats.sessionData.map(d => (
                   <div key={d.name} className="flex items-center gap-3">
@@ -339,7 +339,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="card p-4">
-              <p className="text-sm font-medium text-text-primary mb-4">P&L por instrumento</p>
+              <p className="text-sm font-medium text-text-primary mb-4">P&L by instrument</p>
               <div className="space-y-3">
                 {stats.instrData.slice(0, 6).map(d => (
                   <div key={d.name} className="flex items-center gap-3">
@@ -362,7 +362,7 @@ export default function DashboardPage() {
 
         {!hasData && (
           <div className="card p-12 text-center">
-            <p className="text-sm text-text-disabled">Registrá trades en el Journal para ver tus estadísticas acá.</p>
+            <p className="text-sm text-text-disabled">Register trades in the Journal to see your stats here.</p>
           </div>
         )}
       </main>
