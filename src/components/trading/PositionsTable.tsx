@@ -17,7 +17,10 @@ type TradeRow = {
   exit_price: number | null;
   sl: number | null;
   tp: number | null;
+  gross_pnl: number | null;
   net_pnl: number | null;
+  fees: number | null;
+  swap: number | null;
   open_time: string;
   close_time: string | null;
   duration_minutes: number | null;
@@ -90,7 +93,7 @@ export default function PositionsTable() {
 
     let query = db
       .from("trades")
-      .select("id, instrument, direction, lot_size, entry_price, exit_price, sl, tp, net_pnl, open_time, close_time, duration_minutes, return_r, source, mt5_ticket, journal_entries(id)")
+      .select("id, instrument, direction, lot_size, entry_price, exit_price, sl, tp, gross_pnl, net_pnl, fees, swap, open_time, close_time, duration_minutes, return_r, source, mt5_ticket, journal_entries(id)")
       .eq("user_id", uid)
       .order("open_time", { ascending: false })
       .limit(200);
@@ -332,9 +335,20 @@ export default function PositionsTable() {
                       t.net_pnl == null ? "text-text-disabled"
                         : t.net_pnl >= 0 ? "text-profit" : "text-loss"
                     )}>
-                      {t.net_pnl != null
-                        ? `${t.net_pnl >= 0 ? "+" : ""}$${t.net_pnl.toFixed(2)}`
-                        : "—"}
+                      {t.net_pnl != null ? (
+                        <span
+                          title={[
+                            t.gross_pnl != null ? `Bruto: ${t.gross_pnl >= 0 ? "+" : ""}$${t.gross_pnl.toFixed(2)}` : null,
+                            t.swap ? `Swap: ${t.swap >= 0 ? "+" : ""}$${t.swap.toFixed(2)}` : null,
+                            t.fees ? `Com.: ${t.fees >= 0 ? "+" : ""}$${t.fees.toFixed(2)}` : null,
+                          ].filter(Boolean).join("  |  ") || undefined}
+                        >
+                          {t.net_pnl >= 0 ? "+" : ""}${t.net_pnl.toFixed(2)}
+                          {(t.swap || t.fees) ? (
+                            <span className="ml-0.5 text-[9px] text-text-disabled">*</span>
+                          ) : null}
+                        </span>
+                      ) : "—"}
                     </td>
                     <td className={cn(
                       "px-3 py-2.5 font-mono",

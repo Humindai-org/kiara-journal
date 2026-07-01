@@ -28,6 +28,9 @@ function toLocalInput(iso: string | null) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function fmtCost(n: number) {
+  return `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+}
 
 type Trade = {
   id: string;
@@ -44,6 +47,8 @@ type Trade = {
   session: string | null;
   gross_pnl: number | null;
   net_pnl: number | null;
+  fees: number | null;
+  swap: number | null;
   risk_r: number | null;
   return_r: number | null;
   risk_percent: number | null;
@@ -101,6 +106,10 @@ export default function TradeDetailPage() {
   const [closeTime, setCloseTime] = useState("");
   const [session, setSession] = useState<string>("LONDON");
 
+  // Costs — signed values (negative = cost)
+  const [swapValue, setSwapValue] = useState("0");
+  const [feesValue, setFeesValue] = useState("0");
+
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data?.user) return;
@@ -122,22 +131,33 @@ export default function TradeDetailPage() {
         setOpenTime(toLocalInput(tr.open_time));
         setCloseTime(toLocalInput(tr.close_time));
         setSession(tr.session ?? "LONDON");
+        setSwapValue(tr.swap?.toString() ?? "0");
+        setFeesValue(tr.fees?.toString() ?? "0");
       }
       const { data: je } = await supabase.from("journal_entries").select("*").eq("trade_id", tradeId).single();
       if (je) setEntry(je as JournalEntry);
     });
   }, [supabase, tradeId]);
 
-  // Live P&L / R preview from editable fields
+  // Live P&L / R preview — gross from prices, net includes swap + fees
   const preview = useMemo(() => {
     const e = parseFloat(entryPrice), x = parseFloat(exitPrice), lots = parseFloat(lotSize);
     if (!e || !x || !lots) return null;
     const pips = calcPips(instrument, e, x, direction);
-    const pnl = calcPnL(instrument, lots, pips);
+    const gross = calcPnL(instrument, lots, pips);
+    const sw = parseFloat(swapValue) || 0;
+    const fee = parseFloat(feesValue) || 0;
+    const net = parseFloat((gross + sw + fee).toFixed(2));
     const s = parseFloat(sl);
     const r = s ? (direction === "LONG" ? x - e : e - x) / Math.abs(e - s) : null;
-    return { pnl, pips, r };
-  }, [entryPrice, exitPrice, lotSize, sl, instrument, direction]);
+    return { gross, net, pips, r };
+  }, [entryPrice, exitPrice, lotSize, sl, swapValue, feesValue, instrument, direction]);
+
+  const displayNet   = preview?.net   ?? trade?.net_pnl   ?? 0;
+  const displayGross = preview?.gross ?? trade?.gross_pnl ?? null;
+  const displaySwap  = parseFloat(swapValue) || trade?.swap  || 0;
+  const displayFees  = parseFloat(feesValue) || trade?.fees  || 0;
+  const hasCosts     = displaySwap !== 0 || displayFees !== 0;
 
   async function handleDelete() {
     if (!confirm("¿Eliminar este trade? Esta acción no se puede deshacer.")) return;
@@ -156,15 +176,20 @@ export default function TradeDetailPage() {
       const e = parseFloat(entryPrice);
       const x = exitPrice ? parseFloat(exitPrice) : null;
       const lots = parseFloat(lotSize) || 0.1;
+      const sw = parseFloat(swapValue) || 0;
+      const fee = parseFloat(feesValue) || 0;
       const openDt = openTime ? new Date(openTime).toISOString() : trade.open_time;
       const closeDt = closeTime ? new Date(closeTime).toISOString() : null;
 
+      let grossPnl: number | null = null;
       let netPnl: number | null = null;
       let returnR: number | null = null;
       let durationMin: number | null = null;
+
       if (x) {
         const pips = calcPips(instrument, e, x, direction);
-        netPnl = parseFloat(calcPnL(instrument, lots, pips).toFixed(2));
+        grossPnl = parseFloat(calcPnL(instrument, lots, pips).toFixed(2));
+        netPnl   = parseFloat((grossPnl + sw + fee).toFixed(2));
       }
       if (x && sl) {
         const ret = direction === "LONG" ? x - e : e - x;
@@ -186,8 +211,10 @@ export default function TradeDetailPage() {
         close_time: closeDt,
         duration_minutes: durationMin,
         session,
-        net_pnl: netPnl,
-        gross_pnl: netPnl,
+        gross_pnl: grossPnl,
+        net_pnl:   netPnl,
+        fees:      fee || null,
+        swap:      sw  || null,
         return_r: returnR,
         followed_plan: followedPlan,
         mistakes: selectedMistakes,
@@ -196,12 +223,12 @@ export default function TradeDetailPage() {
         exit_emotion: entry.exit_emotion,
       }).eq("id", tradeId);
 
-      // Reflect new computed values in the P&L card
       setTrade(prev => prev ? {
         ...prev, instrument, direction, lot_size: lots, entry_price: e, exit_price: x,
         sl: sl ? parseFloat(sl) : null, tp: tp ? parseFloat(tp) : null,
         open_time: openDt, close_time: closeDt, duration_minutes: durationMin,
-        session, net_pnl: netPnl, return_r: returnR,
+        session, gross_pnl: grossPnl, net_pnl: netPnl, fees: fee || null, swap: sw || null,
+        return_r: returnR,
       } : prev);
 
       const jePayload = {
@@ -257,7 +284,7 @@ export default function TradeDetailPage() {
             {/* P&L card — live from editable fields */}
             <div className={cn(
               "card-light p-4 text-center space-y-1",
-              (preview?.pnl ?? trade.net_pnl ?? 0) >= 0 ? "border-profit/30 bg-profit/10" : "border-loss/30 bg-loss/10"
+              displayNet >= 0 ? "border-profit/30 bg-profit/10" : "border-loss/30 bg-loss/10"
             )}>
               <div className="flex items-center justify-center gap-2">
                 {direction === "LONG"
@@ -265,14 +292,42 @@ export default function TradeDetailPage() {
                   : <TrendingDown className="size-4 text-loss" />}
                 <span className="text-xs text-text-secondary">{instrument} {direction}</span>
               </div>
-              <p className={cn("text-4xl font-mono font-bold tabular-nums tracking-tight", (preview?.pnl ?? trade.net_pnl ?? 0) >= 0 ? "text-profit" : "text-loss")}>
-                {(preview?.pnl ?? trade.net_pnl ?? 0) >= 0 ? "+" : ""}{(preview?.pnl ?? trade.net_pnl ?? 0).toFixed(2)}
+
+              {/* Net P&L — big number */}
+              <p className={cn(
+                "text-4xl font-mono font-bold tabular-nums tracking-tight",
+                displayNet >= 0 ? "text-profit" : "text-loss"
+              )}>
+                {displayNet >= 0 ? "+" : ""}{displayNet.toFixed(2)}
               </p>
+
+              {/* R + pips */}
               <p className="text-xs text-text-disabled">
                 {preview?.r != null ? `${preview.r > 0 ? "+" : ""}${preview.r.toFixed(2)}R`
                   : trade.return_r != null ? `${trade.return_r > 0 ? "+" : ""}${trade.return_r.toFixed(2)}R` : "—"}
                 {preview && <span className="ml-2">· {preview.pips.toFixed(0)} pips</span>}
               </p>
+
+              {/* Cost breakdown — only shown when there are costs */}
+              {hasCosts && (
+                <div className="flex justify-center flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-white/10">
+                  {displayGross != null && (
+                    <span className="text-[10px] text-text-disabled">
+                      Bruto <span className="font-mono">{fmtCost(displayGross)}</span>
+                    </span>
+                  )}
+                  {displaySwap !== 0 && (
+                    <span className={cn("text-[10px]", displaySwap >= 0 ? "text-profit/70" : "text-loss/70")}>
+                      Swap <span className="font-mono">{fmtCost(displaySwap)}</span>
+                    </span>
+                  )}
+                  {displayFees !== 0 && (
+                    <span className={cn("text-[10px]", displayFees >= 0 ? "text-profit/70" : "text-loss/70")}>
+                      Com. <span className="font-mono">{fmtCost(displayFees)}</span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Editable instrument + direction */}
@@ -348,6 +403,47 @@ export default function TradeDetailPage() {
                   <input type="datetime-local" value={closeTime} onChange={e => setCloseTime(e.target.value)}
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-2 py-1.5 text-[11px] text-text-primary focus:outline-none focus:border-accent" />
                 </div>
+              </div>
+
+              {/* Swap + Comisión */}
+              <div>
+                <p className="text-[10px] text-text-disabled mb-1.5 uppercase tracking-wide">Costes</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-text-disabled block mb-1">
+                      Swap <span className="normal-case">(– si pagas)</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={swapValue}
+                      onChange={e => setSwapValue(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text-disabled block mb-1">
+                      Comisión <span className="normal-case">(– siempre)</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={feesValue}
+                      onChange={e => setFeesValue(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                    />
+                  </div>
+                </div>
+                {/* Live net reminder */}
+                {preview && hasCosts && (
+                  <p className="mt-1.5 text-[10px] text-text-disabled text-right">
+                    Neto: <span className={cn("font-mono", preview.net >= 0 ? "text-profit" : "text-loss")}>
+                      {fmtCost(preview.net)}
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
 
