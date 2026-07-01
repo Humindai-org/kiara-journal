@@ -75,6 +75,7 @@ export default function PositionsTable() {
   const [userId, setUserId]         = useState<string | null>(null);
   const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  const [pnlPopup, setPnlPopup]     = useState<TradeRow | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -330,24 +331,17 @@ export default function PositionsTable() {
                     </td>
                     <td className="px-3 py-2.5 font-mono text-loss">{t.sl ? t.sl.toFixed(d) : "—"}</td>
                     <td className="px-3 py-2.5 font-mono text-profit">{t.tp ? t.tp.toFixed(d) : "—"}</td>
-                    <td className={cn(
-                      "px-3 py-2.5 font-mono font-medium",
-                      t.net_pnl == null ? "text-text-disabled"
-                        : t.net_pnl >= 0 ? "text-profit" : "text-loss"
-                    )}>
+                    <td className="px-3 py-2.5 font-mono font-medium">
                       {t.net_pnl != null ? (
-                        <span
-                          title={[
-                            t.gross_pnl != null ? `Bruto: ${t.gross_pnl >= 0 ? "+" : ""}$${t.gross_pnl.toFixed(2)}` : null,
-                            t.swap ? `Swap: ${t.swap >= 0 ? "+" : ""}$${t.swap.toFixed(2)}` : null,
-                            t.fees ? `Com.: ${t.fees >= 0 ? "+" : ""}$${t.fees.toFixed(2)}` : null,
-                          ].filter(Boolean).join("  |  ") || undefined}
+                        <button
+                          onClick={() => setPnlPopup(t)}
+                          className={cn(
+                            "font-mono font-medium transition-opacity hover:opacity-70",
+                            t.net_pnl >= 0 ? "text-profit" : "text-loss"
+                          )}
                         >
                           {t.net_pnl >= 0 ? "+" : ""}${t.net_pnl.toFixed(2)}
-                          {(t.swap || t.fees) ? (
-                            <span className="ml-0.5 text-[9px] text-text-disabled">*</span>
-                          ) : null}
-                        </span>
+                        </button>
                       ) : "—"}
                     </td>
                     <td className={cn(
@@ -392,6 +386,124 @@ export default function PositionsTable() {
           </table>
         </div>
       )}
+
+      {/* ── P&L Breakdown Popup ─────────────────────────── */}
+      {pnlPopup && (() => {
+        const t = pnlPopup;
+        // For MT5 trades: fees = commission + swap (combined in DB)
+        // so commission = fees - swap to avoid double-counting.
+        // For MANUAL trades: fees = commission only.
+        const swap       = t.swap ?? 0;
+        const commission = t.source === "MT5"
+          ? (t.fees ?? 0) - swap
+          : (t.fees ?? 0);
+        const hasSwap   = swap !== 0;
+        const hasFees   = commission !== 0;
+        const hasCosts  = hasSwap || hasFees;
+
+        // Expected net from components (should equal t.net_pnl ± MT5 rounding)
+        const componentSum = parseFloat(
+          ((t.gross_pnl ?? 0) + swap + commission).toFixed(2)
+        );
+        const roundingDiff = t.net_pnl != null
+          ? parseFloat(Math.abs(t.net_pnl - componentSum).toFixed(2))
+          : 0;
+
+        const { day, time } = fmtDateTime(t.open_time);
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            onClick={() => setPnlPopup(null)}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/50" />
+
+            {/* Card */}
+            <div
+              className="relative card p-5 w-64 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <span className="text-xs font-medium text-text-primary">{t.instrument}</span>
+                  <span className={cn(
+                    "ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded",
+                    t.direction === "LONG" ? "badge-profit" : "badge-loss"
+                  )}>
+                    {t.direction}
+                  </span>
+                  {t.source === "MT5" && (
+                    <span className="ml-1 text-[9px] text-text-disabled">MT5</span>
+                  )}
+                  <p className="text-[10px] text-text-disabled mt-0.5">{day} · {time}</p>
+                </div>
+                <button
+                  onClick={() => setPnlPopup(null)}
+                  className="text-text-disabled hover:text-text-primary transition-colors"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Net P&L — authoritative */}
+              <div className="text-center mb-4">
+                <p className="text-[10px] text-text-disabled uppercase tracking-wider mb-1">Neto (oficial)</p>
+                <p className={cn(
+                  "text-3xl font-mono font-bold tabular-nums tracking-tight",
+                  (t.net_pnl ?? 0) >= 0 ? "text-profit" : "text-loss"
+                )}>
+                  {(t.net_pnl ?? 0) >= 0 ? "+" : ""}${(t.net_pnl ?? 0).toFixed(2)}
+                </p>
+              </div>
+
+              {/* Breakdown */}
+              {(t.gross_pnl != null || hasCosts) && (
+                <div className="space-y-2 border-t border-border pt-3">
+                  {t.gross_pnl != null && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-text-secondary">Bruto</span>
+                      <span className={cn("font-mono", t.gross_pnl >= 0 ? "text-profit" : "text-loss")}>
+                        {t.gross_pnl >= 0 ? "+" : ""}${t.gross_pnl.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {hasSwap && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-text-secondary">Swap</span>
+                      <span className={cn("font-mono", swap >= 0 ? "text-profit" : "text-loss")}>
+                        {swap >= 0 ? "+" : ""}${swap.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {hasFees && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-text-secondary">Comisión</span>
+                      <span className={cn("font-mono", commission >= 0 ? "text-profit" : "text-loss")}>
+                        {commission >= 0 ? "+" : ""}${commission.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Rounding note — only if diff > $0.01 */}
+                  {roundingDiff > 0.01 && (
+                    <div className="pt-2 border-t border-border/60 space-y-0.5">
+                      <div className="flex justify-between text-[10px] text-text-disabled">
+                        <span>Suma componentes</span>
+                        <span className="font-mono">{componentSum >= 0 ? "+" : ""}${componentSum.toFixed(2)}</span>
+                      </div>
+                      <p className="text-[10px] text-text-disabled leading-snug">
+                        Δ ${roundingDiff.toFixed(2)} · redondeo interno de MT5 sobre valores crudos
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
