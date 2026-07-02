@@ -80,7 +80,8 @@ export default function PositionsTable() {
   const [pnlPopup, setPnlPopup]     = useState<TradeRow | null>(null);
 
   useEffect(() => {
-    if (!activeAccountId) return;
+    if (!activeAccountId) { setLoading(false); return; }
+    setTrades([]);
     fetchTrades(activeAccountId, tab);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAccountId, tab]);
@@ -102,6 +103,11 @@ export default function PositionsTable() {
     }
 
     const { data } = await query;
+    // Discard response if the account changed while this query was in-flight
+    if (accountId !== useAccountStore.getState().activeAccountId) {
+      setLoading(false);
+      return;
+    }
     setTrades((data as TradeRow[]) ?? []);
     setLoading(false);
   }
@@ -458,14 +464,19 @@ export default function PositionsTable() {
                           {fees >= 0 ? "+" : ""}${fees.toFixed(2)}
                         </span>
                       </div>
-                      {swap !== 0 && (
+                      {t.close_time == null ? (
+                        <div className="flex justify-between text-[10px] pl-3">
+                          <span className="text-text-disabled">↳ swap</span>
+                          <span className="font-mono text-text-disabled">at close</span>
+                        </div>
+                      ) : swap !== 0 ? (
                         <div className="flex justify-between text-[10px] pl-3">
                           <span className="text-text-disabled">↳ swap</span>
                           <span className={cn("font-mono text-text-disabled")}>
                             {swap >= 0 ? "+" : ""}${swap.toFixed(2)}
                           </span>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   )}
 

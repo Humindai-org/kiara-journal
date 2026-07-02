@@ -48,9 +48,9 @@ function KpiCard({ label, value, sub, color, icon: Icon }: {
 }
 
 // ─── SVG Equity Curve ─────────────────────────────────────────
-function EquityCurve({ data }: { data: { balance: number; date: string }[] }) {
+function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance: number; date: string }[]; startBalance?: number }) {
   const W = 800, H = 240, padL = 8, padR = 8, padT = 12, padB = 22;
-  const points = [{ balance: INITIAL_BALANCE, date: "Start" }, ...data];
+  const points = [{ balance: startBalance, date: "Start" }, ...data];
   const balances = points.map(p => p.balance);
   const min = Math.min(...balances, INITIAL_BALANCE);
   const max = Math.max(...balances, INITIAL_BALANCE);
@@ -114,6 +114,7 @@ export default function DashboardPage() {
 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [equityPeriod, setEquityPeriod] = useState<"1W" | "1M" | "3M" | "all">("all");
 
   useEffect(() => {
     if (!activeAccountId) { setLoading(false); return; }
@@ -151,8 +152,24 @@ export default function DashboardPage() {
       if (running > peak) peak = running;
       const dd = peak - running;
       if (dd > maxDD) maxDD = dd;
-      return { balance: running, date: new Date(t.open_time).toLocaleDateString("en-US", { day: "2-digit", month: "short" }) };
+      return {
+        balance: running,
+        date: new Date(t.open_time).toLocaleDateString("en-US", { day: "2-digit", month: "short" }),
+        isoDate: t.open_time,
+      };
     });
+
+    const streak = (() => {
+      if (closed.length === 0) return { count: 0, type: "none" as const };
+      const type = (closed[closed.length - 1].net_pnl ?? 0) >= 0 ? "win" as const : "loss" as const;
+      let count = 0;
+      for (let i = closed.length - 1; i >= 0; i--) {
+        const isWin = (closed[i].net_pnl ?? 0) >= 0;
+        if ((type === "win") === isWin) count++;
+        else break;
+      }
+      return { count, type };
+    })();
 
     const evaluated = closed.filter(t => t.followed_plan != null);
     const followedCount = evaluated.filter(t => t.followed_plan === true).length;
@@ -182,9 +199,23 @@ export default function DashboardPage() {
       totalPnl, winRate, profitFactor, avgWin, avgLoss, avgR, expectancy,
       tradeCount: closed.length, winCount: wins.length, lossCount: losses.length,
       equity, maxDD, balance, disciplineRate, evaluatedCount: evaluated.length,
-      sessionData, instrData, progressToTarget,
+      sessionData, instrData, progressToTarget, streak,
     };
   }, [trades, initialBalance]);
+
+  const { equityForDisplay, equityStartBalance } = useMemo(() => {
+    if (equityPeriod === "all" || stats.equity.length === 0) {
+      return { equityForDisplay: stats.equity, equityStartBalance: initialBalance };
+    }
+    const cutoff = new Date();
+    if (equityPeriod === "1W") cutoff.setDate(cutoff.getDate() - 7);
+    else if (equityPeriod === "1M") cutoff.setMonth(cutoff.getMonth() - 1);
+    else if (equityPeriod === "3M") cutoff.setMonth(cutoff.getMonth() - 3);
+    const filtered = stats.equity.filter(p => new Date(p.isoDate) >= cutoff);
+    const before = stats.equity.filter(p => new Date(p.isoDate) < cutoff);
+    const startBal = before.length > 0 ? before[before.length - 1].balance : initialBalance;
+    return { equityForDisplay: filtered, equityStartBalance: startBal };
+  }, [stats.equity, equityPeriod, initialBalance]);
 
   if (loading) {
     return (
@@ -205,7 +236,7 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-y-auto p-6 space-y-4">
 
         {/* ── KPI row ───────────────────────────────────── */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-7 gap-4">
           <KpiCard label="Balance" value={`$${fmtUsd(stats.balance)}`} sub={account?.name ?? "—"} icon={Activity} />
           <KpiCard
             label="P&L total" value={`$${fmtUsd(stats.totalPnl, true)}`}
@@ -231,6 +262,18 @@ export default function DashboardPage() {
             sub={hasData ? `Expectancy $${fmtUsd(stats.expectancy, true)}` : "No trades"}
             color={stats.avgR >= 0 ? "text-profit" : "text-loss"}
             icon={Target}
+          />
+          <KpiCard
+            label="Avg winner" value={hasData && stats.avgWin > 0 ? `$${fmtUsd(stats.avgWin)}` : "—"}
+            sub={hasData ? `${stats.winCount} wins` : "No trades"}
+            color="text-profit"
+            icon={TrendingUp}
+          />
+          <KpiCard
+            label="Avg loser" value={hasData && stats.avgLoss > 0 ? `-$${fmtUsd(stats.avgLoss)}` : "—"}
+            sub={hasData ? `${stats.lossCount} losses` : "No trades"}
+            color="text-loss"
+            icon={TrendingDown}
           />
         </div>
 
@@ -261,14 +304,34 @@ export default function DashboardPage() {
           <div className="col-span-2 card p-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-medium text-text-primary">Equity curve</p>
-              {hasData && (
-                <span className="text-xs font-mono text-text-secondary">
-                  {stats.equity[0]?.date} → {stats.equity[stats.equity.length - 1]?.date}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {hasData && equityForDisplay.length > 0 && (
+                  <span className="text-xs font-mono text-text-secondary">
+                    {equityForDisplay[0]?.date} → {equityForDisplay[equityForDisplay.length - 1]?.date}
+                  </span>
+                )}
+                <div className="flex items-center gap-0.5">
+                  {(["1W", "1M", "3M", "all"] as const).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setEquityPeriod(p)}
+                      className={cn(
+                        "px-2 py-0.5 text-[10px] rounded transition-colors",
+                        equityPeriod === p
+                          ? "bg-accent/20 text-accent"
+                          : "text-text-secondary hover:text-text-primary"
+                      )}
+                    >
+                      {p === "all" ? "All" : p}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            {hasData ? (
-              <EquityCurve data={stats.equity} />
+            {hasData && equityForDisplay.length > 0 ? (
+              <EquityCurve data={equityForDisplay} startBalance={equityStartBalance} />
+            ) : hasData ? (
+              <div className="h-[240px] flex items-center justify-center text-text-disabled text-sm">No trades in this period</div>
             ) : (
               <div className="h-[240px] flex items-center justify-center text-text-disabled text-sm">No trade data yet</div>
             )}
@@ -291,12 +354,16 @@ export default function DashboardPage() {
                     <span className="font-mono text-text-primary">{stats.evaluatedCount}/{stats.tradeCount}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Avg winner</span>
-                    <span className="font-mono text-profit">${fmtUsd(stats.avgWin)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Avg loser</span>
-                    <span className="font-mono text-loss">-${fmtUsd(stats.avgLoss)}</span>
+                    <span className="text-text-secondary">Current streak</span>
+                    <span className={cn(
+                      "font-mono",
+                      stats.streak.count === 0 ? "text-text-disabled"
+                        : stats.streak.type === "win" ? "text-profit" : "text-loss"
+                    )}>
+                      {stats.streak.count > 0
+                        ? `${stats.streak.count} ${stats.streak.type === "win" ? "W" : "L"}`
+                        : "—"}
+                    </span>
                   </div>
                 </div>
                 {stats.disciplineRate < 80 && stats.evaluatedCount > 0 && (
