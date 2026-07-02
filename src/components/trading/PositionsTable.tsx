@@ -383,18 +383,13 @@ export default function PositionsTable() {
       {/* ── P&L Breakdown Popup ─────────────────────────── */}
       {pnlPopup && (() => {
         const t = pnlPopup;
-        // For MT5 trades: fees = commission + swap (combined in DB)
-        // so charges = fees - swap to avoid double-counting.
-        // For MANUAL trades: fees = charges only.
-        const swap    = t.swap ?? 0;
-        const charges = t.source === "MT5"
-          ? (t.fees ?? 0) - swap
-          : (t.fees ?? 0);
-        const hasCosts = swap !== 0 || charges !== 0;
-
+        // Show columns directly: gross_pnl, fees, swap — no derived formula.
+        // fees = commission + swap combined; net = gross + fees.
+        const swap = t.swap ?? 0;
+        const fees = t.fees ?? 0;
         // Expected net from components (should equal t.net_pnl ± MT5 rounding)
         const componentSum = parseFloat(
-          ((t.gross_pnl ?? 0) + swap + charges).toFixed(2)
+          ((t.gross_pnl ?? 0) + fees).toFixed(2)
         );
         const roundingDiff = t.net_pnl != null
           ? parseFloat(Math.abs(t.net_pnl - componentSum).toFixed(2))
@@ -459,33 +454,23 @@ export default function PositionsTable() {
                     </span>
                   </div>
 
-                  <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Swap</span>
-                    {swap !== 0 ? (
-                      <span className={cn("font-mono", swap >= 0 ? "text-profit" : "text-loss")}>
-                        {swap >= 0 ? "+" : ""}${swap.toFixed(2)}
-                      </span>
-                    ) : (
-                      <span className="font-mono text-text-disabled">$0.00</span>
-                    )}
-                  </div>
-
-                  <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Charges</span>
-                    {charges !== 0 ? (
-                      <span className={cn("font-mono", charges >= 0 ? "text-profit" : "text-loss")}>
-                        {charges >= 0 ? "+" : ""}${charges.toFixed(2)}
-                      </span>
-                    ) : (
-                      <span className="font-mono text-text-disabled">$0.00</span>
-                    )}
-                  </div>
-
-                  {/* MT5 charges note — EA sends commission=0 at close */}
-                  {t.source === "MT5" && charges === 0 && (
-                    <p className="text-[9px] text-text-disabled leading-snug mt-1 pl-0.5">
-                      ⚠ EA sends commission=0 at close. Enter charges manually in the journal.
-                    </p>
+                  {fees !== 0 && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-text-secondary">Fees</span>
+                        <span className={cn("font-mono", fees >= 0 ? "text-profit" : "text-loss")}>
+                          {fees >= 0 ? "+" : ""}${fees.toFixed(2)}
+                        </span>
+                      </div>
+                      {swap !== 0 && (
+                        <div className="flex justify-between text-[10px] pl-3">
+                          <span className="text-text-disabled">↳ swap</span>
+                          <span className={cn("font-mono text-text-disabled")}>
+                            {swap >= 0 ? "+" : ""}${swap.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Rounding note — only if diff > $0.01 */}
