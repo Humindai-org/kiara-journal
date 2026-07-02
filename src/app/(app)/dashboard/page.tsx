@@ -28,7 +28,7 @@ const PROFIT_TARGET = 5000;
 
 function fmtUsd(n: number, sign = false) {
   const s = sign && n > 0 ? "+" : "";
-  return `${s}${n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${s}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function KpiCard({ label, value, sub, color, icon: Icon }: {
@@ -50,7 +50,7 @@ function KpiCard({ label, value, sub, color, icon: Icon }: {
 // ─── SVG Equity Curve ─────────────────────────────────────────
 function EquityCurve({ data }: { data: { balance: number; date: string }[] }) {
   const W = 800, H = 240, padL = 8, padR = 8, padT = 12, padB = 22;
-  const points = [{ balance: INITIAL_BALANCE, date: "Inicio" }, ...data];
+  const points = [{ balance: INITIAL_BALANCE, date: "Start" }, ...data];
   const balances = points.map(p => p.balance);
   const min = Math.min(...balances, INITIAL_BALANCE);
   const max = Math.max(...balances, INITIAL_BALANCE);
@@ -151,7 +151,7 @@ export default function DashboardPage() {
       if (running > peak) peak = running;
       const dd = peak - running;
       if (dd > maxDD) maxDD = dd;
-      return { balance: running, date: new Date(t.open_time).toLocaleDateString("es-ES", { day: "2-digit", month: "short" }) };
+      return { balance: running, date: new Date(t.open_time).toLocaleDateString("en-US", { day: "2-digit", month: "short" }) };
     });
 
     const evaluated = closed.filter(t => t.followed_plan != null);

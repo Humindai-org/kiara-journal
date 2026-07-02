@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-type Tab = "open" | "pending" | "closed";
+type Tab = "open" | "closed";
 
 type TradeRow = {
   id: string;
@@ -97,25 +97,16 @@ export default function PositionsTable() {
       .select("id, instrument, direction, lot_size, entry_price, exit_price, sl, tp, gross_pnl, net_pnl, fees, swap, open_time, close_time, duration_minutes, return_r, source, mt5_ticket, journal_entries(id)")
       .eq("user_id", uid)
       .order("open_time", { ascending: false })
-      .limit(200);
+      .limit(500);
 
     if (currentTab === "open") {
       query = query.is("close_time", null);
-    } else if (currentTab === "pending") {
-      query = query.not("close_time", "is", null);
     } else {
-      const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-      query = query.not("close_time", "is", null).gte("open_time", since);
+      query = query.not("close_time", "is", null);
     }
 
     const { data } = await query;
-    let rows = (data as TradeRow[]) ?? [];
-
-    if (currentTab === "pending") {
-      rows = rows.filter(t => !t.journal_entries || t.journal_entries.length === 0);
-    }
-
-    setTrades(rows);
+    setTrades((data as TradeRow[]) ?? []);
     setLoading(false);
   }
 
@@ -143,10 +134,13 @@ export default function PositionsTable() {
     });
   }, [trades, filters]);
 
+  const unjournaled = tab === "closed"
+    ? trades.filter(t => !t.journal_entries || t.journal_entries.length === 0).length
+    : 0;
+
   const tabs: { key: Tab; label: string }[] = [
-    { key: "open",    label: "Open" },
-    { key: "pending", label: "Not journaled" },
-    { key: "closed",  label: "Closed (7d)" },
+    { key: "open",   label: "Open" },
+    { key: "closed", label: "Closed" },
   ];
 
   const decimals = (instrument: string) =>
@@ -172,9 +166,9 @@ export default function PositionsTable() {
               )}
             >
               {label}
-              {key === "pending" && trades.length > 0 && tab !== "pending" && (
-                <span className="ml-1.5 bg-accent text-bg text-[9px] font-bold px-1 py-0.5 rounded-full">
-                  {trades.length}
+              {key === "closed" && tab === "closed" && unjournaled > 0 && (
+                <span className="ml-1.5 bg-warning text-bg text-[9px] font-bold px-1 py-0.5 rounded-full">
+                  {unjournaled}
                 </span>
               )}
             </button>
@@ -286,9 +280,8 @@ export default function PositionsTable() {
         <div className="flex-1 flex items-center justify-center text-text-disabled text-sm">
           {active
             ? "No results with these filters"
-            : tab === "open"    ? "No open positions"
-            : tab === "pending" ? "All trades are journaled ✓"
-            :                    "No trades in the last 7 days"}
+            : tab === "open" ? "No open positions"
+            :                  "No closed trades"}
         </div>
       ) : (
         <div className="flex-1 overflow-x-auto overflow-y-auto">
@@ -488,6 +481,13 @@ export default function PositionsTable() {
                     )}
                   </div>
 
+                  {/* MT5 charges note — EA sends commission=0 at close */}
+                  {t.source === "MT5" && charges === 0 && (
+                    <p className="text-[9px] text-text-disabled leading-snug mt-1 pl-0.5">
+                      ⚠ EA sends commission=0 at close. Enter charges manually in the journal.
+                    </p>
+                  )}
+
                   {/* Rounding note — only if diff > $0.01 */}
                   {roundingDiff > 0.01 && (
                     <div className="pt-2 border-t border-border/60 space-y-0.5">
@@ -496,7 +496,7 @@ export default function PositionsTable() {
                         <span className="font-mono">{componentSum >= 0 ? "+" : ""}${componentSum.toFixed(2)}</span>
                       </div>
                       <p className="text-[10px] text-text-disabled leading-snug">
-                        Δ ${roundingDiff.toFixed(2)} · redondeo interno de MT5
+                        Δ ${roundingDiff.toFixed(2)} · MT5 internal rounding
                       </p>
                     </div>
                   )}
