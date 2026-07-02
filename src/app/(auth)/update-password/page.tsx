@@ -13,8 +13,8 @@ export default function UpdatePasswordPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password !== confirm) { setError("Las contraseñas no coinciden."); return; }
-    if (password.length < 6) { setError("Mínimo 6 caracteres."); return; }
+    if (password !== confirm) { setError("Passwords don't match."); return; }
+    if (password.length < 6) { setError("Minimum 6 characters."); return; }
     setLoading(true);
     setError("");
     const supabase = createClient();
@@ -38,17 +38,17 @@ export default function UpdatePasswordPage() {
       </div>
 
       <div className="card p-6">
-        <h1 className="text-text-primary font-medium mb-1">Nueva contraseña</h1>
-        <p className="text-text-secondary text-xs mb-6">Elegí una contraseña nueva para tu cuenta.</p>
+        <h1 className="text-text-primary font-medium mb-1">New password</h1>
+        <p className="text-text-secondary text-xs mb-6">Choose a new password for your account.</p>
 
         {done ? (
           <p className="text-xs text-profit bg-[#0f2b1a] border border-profit/20 rounded-lg px-3 py-2">
-            Contraseña actualizada. Redirigiendo…
+            Password updated. Redirecting…
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">Nueva contraseña</label>
+              <label className="block text-xs text-text-secondary mb-1.5">New password</label>
               <input
                 type="password"
                 value={password}
@@ -59,7 +59,7 @@ export default function UpdatePasswordPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">Confirmar contraseña</label>
+              <label className="block text-xs text-text-secondary mb-1.5">Confirm password</label>
               <input
                 type="password"
                 value={confirm}
