@@ -5,6 +5,7 @@ import { ExternalLink, RefreshCw, X, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useAccountStore } from "@/store/account";
 
 type Tab = "open" | "closed";
 
@@ -50,8 +51,8 @@ const EMPTY_FILTERS: Filters = {
 
 function fmtDateTime(iso: string) {
   const d = new Date(iso);
-  const day = d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
-  const time = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const day = d.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit" });
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
   return { day, time };
 }
 
@@ -69,33 +70,28 @@ export default function PositionsTable() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  const { activeAccountId } = useAccountStore();
+
   const [tab, setTab]               = useState<Tab>("closed");
   const [trades, setTrades]         = useState<TradeRow[]>([]);
   const [loading, setLoading]       = useState(true);
-  const [userId, setUserId]         = useState<string | null>(null);
   const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [pnlPopup, setPnlPopup]     = useState<TradeRow | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) setUserId(data.user.id);
-    });
-  }, [supabase]);
-
-  useEffect(() => {
-    if (!userId) return;
-    fetchTrades(userId, tab);
+    if (!activeAccountId) return;
+    fetchTrades(activeAccountId, tab);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, tab]);
+  }, [activeAccountId, tab]);
 
-  async function fetchTrades(uid: string, currentTab: Tab) {
+  async function fetchTrades(accountId: string, currentTab: Tab) {
     setLoading(true);
 
     let query = db
       .from("trades")
       .select("id, instrument, direction, lot_size, entry_price, exit_price, sl, tp, gross_pnl, net_pnl, fees, swap, open_time, close_time, duration_minutes, return_r, source, mt5_ticket, journal_entries(id)")
-      .eq("user_id", uid)
+      .eq("account_id", accountId)
       .order("open_time", { ascending: false })
       .limit(500);
 
@@ -111,7 +107,7 @@ export default function PositionsTable() {
   }
 
   function refresh() {
-    if (userId) fetchTrades(userId, tab);
+    if (activeAccountId) fetchTrades(activeAccountId, tab);
   }
 
   function clearFilters() {
