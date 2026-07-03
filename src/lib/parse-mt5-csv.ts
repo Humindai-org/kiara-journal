@@ -62,7 +62,7 @@ function splitLine(line: string, sep: string): string[] {
  *   6:S/L  7:T/P  8:Time(close)  9:Price(exit)  10:Commission  11:Swap  12:Profit
  */
 export function parseMT5CSV(text: string): ParsedTrade[] {
-  const sep = text.includes("\t") ? "\t" : ",";
+  const sep = text.includes("\t") ? "\t" : text.includes(";") ? ";" : ",";
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
 
