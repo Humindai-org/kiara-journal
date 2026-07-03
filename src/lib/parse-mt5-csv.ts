@@ -18,7 +18,7 @@ export type ParsedTrade = {
   source: "MT5";
 };
 
-// "2025.06.15 09:34:00" → "2025-06-15T09:34:00.000Z"
+// "2026.04.01 19:10:43" → "2026-04-01T19:10:43.000Z"
 function parseMT5DateTime(raw: string): string {
   return raw.trim()
     .replace(/^(\d{4})\.(\d{2})\.(\d{2})/, "$1-$2-$3")
@@ -33,53 +33,55 @@ function detectSession(isoUtc: string): ParsedTrade["session"] {
   return "TOKYO";
 }
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
+// Handles European locale decimals ("4782,08"), double-dash negatives ("--0,60")
+function parseNum(raw: string): number {
+  return parseFloat(
+    raw.trim()
+      .replace(/^--/, "-")   // "--0,60" → "-0,60"
+      .replace(",", ".")     // "4782,08" → "4782.08"
+  ) || 0;
+}
+
+function splitLine(line: string, sep: string): string[] {
+  // Strip surrounding quotes if present
+  return line.split(sep).map(c => c.trim().replace(/^"(.*)"$/, "$1"));
 }
 
 /**
- * Parses an MT5 "Detailed Report" CSV export.
+ * Parses an MT5 Trade History Report CSV (exported via Account History → Save as Report).
  *
- * Column order (by index — headers repeat "Time" and "Price"):
- *   0:#  1:Time(open)  2:Position  3:Symbol  4:Type  5:Volume
- *   6:Price(entry)  7:S/L  8:T/P  9:Time(close)  10:Price(exit)
- *   11:Commission  12:Swap  13:Profit  14:Balance
+ * Handles:
+ *  - Metadata header rows (Trade History Report, Name, Account, etc.)
+ *  - Tab or comma separation
+ *  - European decimal commas ("4782,08")
+ *  - Double-dash negatives ("--0,60")
+ *  - Trailing dot in symbol name ("XAUUSD.")
  *
- * Rows with Type != "buy"/"sell" (deposits, balance lines) are skipped.
+ * Column layout (after metadata rows, no leading "#" column):
+ *   0:Time(open)  1:Position  2:Symbol  3:Type  4:Volume  5:Price(entry)
+ *   6:S/L  7:T/P  8:Time(close)  9:Price(exit)  10:Commission  11:Swap  12:Profit
  */
 export function parseMT5CSV(text: string): ParsedTrade[] {
+  const sep = text.includes("\t") ? "\t" : ",";
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
 
   const results: ParsedTrade[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = parseCSVLine(lines[i]);
-    if (cols.length < 14) continue;
+  for (const line of lines) {
+    const cols = splitLine(line, sep);
+    if (cols.length < 10) continue;
 
-    const type = cols[4].trim().toLowerCase();
+    // Identify trade rows by Type column (index 3) being "buy" or "sell"
+    const type = cols[3].toLowerCase();
     if (type !== "buy" && type !== "sell") continue;
 
-    const ticket = cols[2].trim();
-    if (!ticket) continue;
+    // Position must be a numeric ticket
+    const ticket = cols[1].trim();
+    if (!ticket || !/^\d+$/.test(ticket)) continue;
 
-    const openTimeRaw  = cols[1].trim();
-    const closeTimeRaw = cols[9].trim();
+    const openTimeRaw  = cols[0];
+    const closeTimeRaw = cols[8];
     if (!openTimeRaw || !closeTimeRaw) continue;
 
     const openTime  = parseMT5DateTime(openTimeRaw);
@@ -91,21 +93,21 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
       ? 0
       : Math.round((closeMs - openMs) / 60000);
 
-    const slRaw      = parseFloat(cols[7]);
-    const tpRaw      = parseFloat(cols[8]);
-    const commission = parseFloat(cols[11]) || 0;
-    const swap       = parseFloat(cols[12]) || 0;
-    const grossPnl   = parseFloat(cols[13]) || 0;
+    const slRaw      = parseNum(cols[6]);
+    const tpRaw      = parseNum(cols[7]);
+    const commission = parseNum(cols[10]);
+    const swap       = parseNum(cols[11]);
+    const grossPnl   = cols[12] !== undefined ? parseNum(cols[12]) : 0;
 
     results.push({
       mt5_ticket:       ticket,
-      instrument:       cols[3].trim(),
+      instrument:       cols[2].replace(/\.$/, ""), // strip trailing "." e.g. "XAUUSD."
       direction:        type === "buy" ? "LONG" : "SHORT",
-      lot_size:         parseFloat(cols[5]) || 0,
-      entry_price:      parseFloat(cols[6]) || 0,
-      exit_price:       parseFloat(cols[10]) || 0,
-      sl:               slRaw && slRaw !== 0 ? slRaw : null,
-      tp:               tpRaw && tpRaw !== 0 ? tpRaw : null,
+      lot_size:         parseNum(cols[4]),
+      entry_price:      parseNum(cols[5]),
+      exit_price:       parseNum(cols[9]),
+      sl:               slRaw !== 0 ? slRaw : null,
+      tp:               tpRaw !== 0 ? tpRaw : null,
       open_time:        openTime,
       close_time:       closeTime,
       duration_minutes: duration,
