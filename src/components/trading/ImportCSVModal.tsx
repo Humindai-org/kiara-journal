@@ -40,7 +40,8 @@ export default function ImportCSVModal({ accountId, onClose, onSuccess }: Props)
       const text = e.target?.result as string;
       const parsed = parseMT5CSV(text);
       if (parsed.length === 0) {
-        setParseError("No se encontraron trades en el archivo. Asegúrate de exportar el Detailed Report desde MT5.");
+        const preview = text.slice(0, 300).replace(/\r?\n/g, " ↵ ");
+        setParseError(`No se encontraron trades. Contenido detectado:\n${preview}`);
         return;
       }
       setTrades(parsed);
@@ -140,7 +141,7 @@ export default function ImportCSVModal({ accountId, onClose, onSuccess }: Props)
             {parseError && (
               <div className="flex items-start gap-2 text-xs text-loss bg-loss/10 rounded-md px-3 py-2">
                 <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
-                {parseError}
+                <span className="whitespace-pre-wrap break-all">{parseError}</span>
               </div>
             )}
           </div>
