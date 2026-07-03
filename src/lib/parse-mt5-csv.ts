@@ -82,7 +82,9 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
 
     const openTimeRaw  = cols[0];
     const closeTimeRaw = cols[8];
-    if (!openTimeRaw || !closeTimeRaw) continue;
+    // Must look like a date: "2026.04.01 ..."
+    const dateRe = /^\d{4}\.\d{2}\.\d{2}/;
+    if (!dateRe.test(openTimeRaw) || !dateRe.test(closeTimeRaw)) continue;
 
     const openTime  = parseMT5DateTime(openTimeRaw);
     const closeTime = parseMT5DateTime(closeTimeRaw);
