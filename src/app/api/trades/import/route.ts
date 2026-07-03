@@ -33,9 +33,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Account not found" }, { status: 404 });
   }
 
-  // Deduplicate by mt5_ticket — keep last occurrence (most complete data)
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+
+  // Deduplicate by mt5_ticket + drop rows with invalid timestamps
   const seen = new Map<string, typeof trades[0]>();
-  for (const t of trades) seen.set(t.mt5_ticket, t);
+  for (const t of trades) {
+    if (!isoRe.test(t.open_time) || !isoRe.test(t.close_time)) continue;
+    seen.set(t.mt5_ticket, t);
+  }
 
   const rows = Array.from(seen.values()).map(t => ({
     ...t,
