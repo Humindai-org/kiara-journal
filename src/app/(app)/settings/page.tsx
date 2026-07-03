@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo } from "react";
-import { Plus, RefreshCw, Check, Pencil, X } from "lucide-react";
+import { Plus, RefreshCw, Check, X, Zap, Unplug, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
@@ -23,6 +23,8 @@ type Account = {
   is_active: boolean;
   last_synced_at: string | null;
   webhook_token: string;
+  mt5_server: string | null;
+  metaapi_account_id: string | null;
 };
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; color: string }[] = [
@@ -57,6 +59,12 @@ export default function SettingsPage() {
   const [saving, setSaving]   = useState(false);
   const [form, setForm]       = useState({ ...EMPTY_FORM });
   const [recalcId, setRecalcId] = useState<string | null>(null);
+
+  // MetaApi state
+  const [connectingId,    setConnectingId]    = useState<string | null>(null);
+  const [syncingId,       setSyncingId]       = useState<string | null>(null);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [metaapiForm, setMetaapiForm] = useState<Record<string, { server: string; password: string }>>({});
 
   async function load() {
     setLoading(true);
@@ -119,6 +127,59 @@ export default function SettingsPage() {
       });
     }
     await load();
+  }
+
+  async function handleMetaApiConnect(accountId: string) {
+    const f = metaapiForm[accountId];
+    if (!f?.password) { toast.error("Password is required"); return; }
+    setConnectingId(accountId);
+    const res = await fetch("/api/metaapi/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: accountId, mt5_password: f.password, mt5_server: f.server || undefined }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      toast.error(json.error ?? "Connection failed");
+    } else {
+      toast.success("MetaApi connecting… takes ~2 min. Then click Sync.");
+      setMetaapiForm(prev => { const next = { ...prev }; delete next[accountId]; return next; });
+      await load();
+    }
+    setConnectingId(null);
+  }
+
+  async function handleMetaApiSync(accountId: string) {
+    setSyncingId(accountId);
+    const res = await fetch("/api/metaapi/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: accountId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      toast.error(json.error ?? "Sync failed");
+    } else if (!json.ok) {
+      const reason = json.state === "DEPLOYING" ? "Still connecting, try again in ~2 min" : (json.reason ?? json.state);
+      toast.warning(reason);
+    } else {
+      toast.success(`Synced: ${json.imported} closed, ${json.open} open`);
+      await load();
+    }
+    setSyncingId(null);
+  }
+
+  async function handleMetaApiDisconnect(accountId: string) {
+    setDisconnectingId(accountId);
+    const res = await fetch("/api/metaapi/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: accountId }),
+    });
+    const json = await res.json();
+    if (!res.ok) { toast.error(json.error ?? "Disconnect failed"); }
+    else { toast.success("MetaApi disconnected"); await load(); }
+    setDisconnectingId(null);
   }
 
   return (
@@ -322,6 +383,90 @@ export default function SettingsPage() {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* MetaApi Auto Sync */}
+                    {acc.type === "MT5" && (
+                      <div className="pt-2 border-t border-border">
+                        <p className="text-[10px] text-text-disabled mb-2">MetaApi Auto Sync</p>
+
+                        {acc.metaapi_account_id ? (
+                          /* Connected state */
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 text-[9px] font-medium bg-profit/10 text-profit px-2 py-0.5 rounded-full">
+                                <span className="size-1.5 rounded-full bg-profit inline-block" />
+                                Connected
+                              </span>
+                              <code className="text-[9px] text-text-disabled font-mono truncate">
+                                {acc.metaapi_account_id.slice(0, 8)}…{acc.metaapi_account_id.slice(-4)}
+                              </code>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleMetaApiSync(acc.id)}
+                                disabled={syncingId === acc.id}
+                                className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/70 transition-colors disabled:opacity-50"
+                              >
+                                <RotateCw className={cn("size-3", syncingId === acc.id && "animate-spin")} />
+                                {syncingId === acc.id ? "Syncing…" : "Sync now"}
+                              </button>
+                              <span className="text-text-disabled text-[9px]">·</span>
+                              <button
+                                onClick={() => handleMetaApiDisconnect(acc.id)}
+                                disabled={disconnectingId === acc.id}
+                                className="flex items-center gap-1 text-[10px] text-loss/70 hover:text-loss transition-colors disabled:opacity-50"
+                              >
+                                <Unplug className="size-3" />
+                                {disconnectingId === acc.id ? "Disconnecting…" : "Disconnect"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Not connected — show connect form */
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[9px] text-text-disabled block mb-1">
+                                  MT5 Server{acc.mt5_server ? ` (${acc.mt5_server})` : ""}
+                                </label>
+                                <input
+                                  value={metaapiForm[acc.id]?.server ?? ""}
+                                  onChange={e => setMetaapiForm(prev => ({
+                                    ...prev,
+                                    [acc.id]: { ...prev[acc.id], server: e.target.value, password: prev[acc.id]?.password ?? "" },
+                                  }))}
+                                  placeholder={acc.mt5_server ?? "TheTradingPit-Live"}
+                                  className="w-full bg-surface-2 border border-border-light rounded px-2 py-1 text-[10px] font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] text-text-disabled block mb-1">
+                                  Investor password *
+                                </label>
+                                <input
+                                  type="password"
+                                  value={metaapiForm[acc.id]?.password ?? ""}
+                                  onChange={e => setMetaapiForm(prev => ({
+                                    ...prev,
+                                    [acc.id]: { ...prev[acc.id], password: e.target.value, server: prev[acc.id]?.server ?? "" },
+                                  }))}
+                                  placeholder="read-only password"
+                                  className="w-full bg-surface-2 border border-border-light rounded px-2 py-1 text-[10px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleMetaApiConnect(acc.id)}
+                              disabled={connectingId === acc.id || !metaapiForm[acc.id]?.password}
+                              className="flex items-center gap-1.5 text-[10px] text-accent border border-accent/30 hover:border-accent/60 rounded px-2.5 py-1 transition-colors disabled:opacity-50"
+                            >
+                              <Zap className="size-3" />
+                              {connectingId === acc.id ? "Connecting…" : "Connect MetaTrader"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
