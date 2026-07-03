@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ExternalLink, RefreshCw, X, SlidersHorizontal } from "lucide-react";
+import { ExternalLink, RefreshCw, X, SlidersHorizontal, Upload } from "lucide-react";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
+import ImportCSVModal from "./ImportCSVModal";
 
 type Tab = "open" | "closed";
 
@@ -78,6 +79,7 @@ export default function PositionsTable() {
   const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [pnlPopup, setPnlPopup]     = useState<TradeRow | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     if (!activeAccountId) { setLoading(false); return; }
@@ -200,6 +202,14 @@ export default function PositionsTable() {
                 {activeFilterCount}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded text-text-secondary hover:text-text-primary transition-colors"
+            title="Import CSV"
+          >
+            <Upload className="size-3" />
+            Import
           </button>
           <button
             onClick={refresh}
@@ -380,6 +390,18 @@ export default function PositionsTable() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* ── Import CSV Modal ────────────────────────────── */}
+      {showImport && activeAccountId && (
+        <ImportCSVModal
+          accountId={activeAccountId}
+          onClose={() => setShowImport(false)}
+          onSuccess={() => {
+            setShowImport(false);
+            refresh();
+          }}
+        />
       )}
 
       {/* ── P&L Breakdown Popup ─────────────────────────── */}
