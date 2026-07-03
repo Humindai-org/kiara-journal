@@ -33,7 +33,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Account not found" }, { status: 404 });
   }
 
-  const rows = trades.map(t => ({
+  // Deduplicate by mt5_ticket — keep last occurrence (most complete data)
+  const seen = new Map<string, typeof trades[0]>();
+  for (const t of trades) seen.set(t.mt5_ticket, t);
+
+  const rows = Array.from(seen.values()).map(t => ({
     ...t,
     account_id,
     user_id: user.id,
