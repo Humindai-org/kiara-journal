@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo } from "react";
-import { Plus, RefreshCw, Check, X, Zap, Unplug, RotateCw } from "lucide-react";
+import { Plus, RefreshCw, Check, X, Zap, Unplug, RotateCw, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
@@ -59,6 +59,15 @@ export default function SettingsPage() {
   const [saving, setSaving]   = useState(false);
   const [form, setForm]       = useState({ ...EMPTY_FORM });
   const [recalcId, setRecalcId] = useState<string | null>(null);
+
+  // Edit state
+  const [editingId,   setEditingId]   = useState<string | null>(null);
+  const [editForm,    setEditForm]    = useState({ name: "", type: "MT5" as AccountType, broker: "", account_number: "", currency: "USD", initial_balance: "" });
+  const [editSaving,  setEditSaving]  = useState(false);
+
+  // Delete state
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting,        setDeleting]        = useState(false);
 
   // MetaApi state
   const [connectingId,    setConnectingId]    = useState<string | null>(null);
@@ -127,6 +136,62 @@ export default function SettingsPage() {
       });
     }
     await load();
+  }
+
+  function startEdit(acc: Account) {
+    setDeleteConfirmId(null);
+    setEditingId(acc.id);
+    setEditForm({
+      name:            acc.name,
+      type:            acc.type,
+      broker:          acc.broker,
+      account_number:  acc.account_number ?? "",
+      currency:        acc.currency,
+      initial_balance: String(acc.initial_balance),
+    });
+  }
+
+  async function handleSaveEdit() {
+    if (!editingId || !editForm.name || !editForm.initial_balance) {
+      toast.error("Name and initial balance are required");
+      return;
+    }
+    setEditSaving(true);
+    const res = await fetch("/api/accounts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id:              editingId,
+        name:            editForm.name,
+        type:            editForm.type,
+        broker:          editForm.broker,
+        account_number:  editForm.account_number || null,
+        currency:        editForm.currency,
+        initial_balance: parseFloat(editForm.initial_balance),
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) { toast.error(json.error ?? "Failed to update"); }
+    else { toast.success("Account updated"); setEditingId(null); await load(); }
+    setEditSaving(false);
+  }
+
+  async function handleDelete(accountId: string) {
+    setDeleting(true);
+    const res = await fetch("/api/accounts", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: accountId }),
+    });
+    const json = await res.json();
+    if (!res.ok) { toast.error(json.error ?? "Failed to delete"); }
+    else {
+      toast.success("Account deleted");
+      setDeleteConfirmId(null);
+      if (accountId === activeAccountId) setActiveAccount("");
+      await load();
+    }
+    setDeleting(false);
   }
 
   async function handleMetaApiConnect(accountId: string) {
@@ -291,79 +356,187 @@ export default function SettingsPage() {
                 const pnlPct = (pnl / acc.initial_balance) * 100;
                 const isActive = acc.id === activeAccountId;
 
+                const isEditing = editingId === acc.id;
+                const isDeleteConfirm = deleteConfirmId === acc.id;
+
                 return (
                   <div key={acc.id} className={cn(
                     "card p-4 space-y-3 transition-colors",
                     isActive && "border-accent/40"
                   )}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text-primary">{acc.name}</span>
-                          <span className={cn("text-[10px] font-medium uppercase tracking-wide", typeColor(acc.type))}>
-                            {typeLabel(acc.type)}
-                          </span>
-                          {isActive && (
-                            <span className="text-[9px] font-medium bg-accent/10 text-accent px-1.5 py-0.5 rounded-full">
-                              Active
-                            </span>
+
+                    {/* Edit form — replaces card content when editing */}
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] font-medium text-accent uppercase tracking-wider">Edit account</p>
+                          <button onClick={() => setEditingId(null)} className="text-text-disabled hover:text-text-primary">
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          {[
+                            { label: "Name *", key: "name", placeholder: "TTP $100K — Fase 2", mono: false },
+                            { label: "Broker / Exchange", key: "broker", placeholder: "The Trading Pit", mono: false },
+                            { label: "Account number", key: "account_number", placeholder: "570416698", mono: true },
+                            { label: "Initial balance *", key: "initial_balance", placeholder: "100000", mono: true },
+                          ].map(({ label, key, placeholder, mono }) => (
+                            <div key={key}>
+                              <label className="text-[9px] text-text-disabled block mb-1">{label}</label>
+                              <input
+                                type={key === "initial_balance" ? "number" : "text"}
+                                value={(editForm as never)[key]}
+                                onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                                placeholder={placeholder}
+                                className={cn(
+                                  "w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent",
+                                  mono && "font-mono"
+                                )}
+                              />
+                            </div>
+                          ))}
+                          <div>
+                            <label className="text-[9px] text-text-disabled block mb-1">Type *</label>
+                            <select
+                              value={editForm.type}
+                              onChange={e => setEditForm(f => ({ ...f, type: e.target.value as AccountType }))}
+                              className="w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
+                            >
+                              {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-text-disabled block mb-1">Currency</label>
+                            <select
+                              value={editForm.currency}
+                              onChange={e => setEditForm(f => ({ ...f, currency: e.target.value }))}
+                              className="w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
+                            >
+                              {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={editSaving}
+                          className="btn-action w-full py-2 rounded-lg text-xs"
+                        >
+                          {editSaving ? "Saving…" : "Save changes"}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-text-primary">{acc.name}</span>
+                              <span className={cn("text-[10px] font-medium uppercase tracking-wide", typeColor(acc.type))}>
+                                {typeLabel(acc.type)}
+                              </span>
+                              {isActive && (
+                                <span className="text-[9px] font-medium bg-accent/10 text-accent px-1.5 py-0.5 rounded-full">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            {acc.broker && (
+                              <p className="text-xs text-text-disabled">{acc.broker}{acc.account_number ? ` · #${acc.account_number}` : ""}</p>
+                            )}
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <div className="text-right shrink-0">
+                              <p className="text-base font-mono font-semibold text-text-primary">
+                                {acc.currency} {acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                              </p>
+                              <p className={cn("text-xs font-mono", pnl >= 0 ? "text-profit" : "text-loss")}>
+                                {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%)
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-1 pt-0.5">
+                              <button
+                                onClick={() => startEdit(acc)}
+                                className="text-text-disabled hover:text-text-primary transition-colors"
+                                title="Edit account"
+                              >
+                                <Pencil className="size-3.5" />
+                              </button>
+                              <button
+                                onClick={() => { setEditingId(null); setDeleteConfirmId(acc.id); }}
+                                className="text-text-disabled hover:text-loss transition-colors"
+                                title="Delete account"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Balance bar */}
+                        <div className="h-1 bg-surface-2 rounded-full overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full", pnl >= 0 ? "bg-profit/60" : "bg-loss/60")}
+                            style={{ width: `${Math.min(Math.abs(pnlPct) * 2, 100)}%` }}
+                          />
+                        </div>
+
+                        {/* Delete confirmation */}
+                        {isDeleteConfirm && (
+                          <div className="bg-loss/5 border border-loss/20 rounded-lg px-3 py-2.5 flex items-center justify-between gap-3">
+                            <p className="text-[10px] text-text-secondary">
+                              Delete <strong>{acc.name}</strong> and all its trades permanently?
+                            </p>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="text-[10px] text-text-disabled hover:text-text-primary transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleDelete(acc.id)}
+                                disabled={deleting}
+                                className="text-[10px] text-loss font-medium hover:text-loss/70 transition-colors disabled:opacity-50"
+                              >
+                                {deleting ? "Deleting…" : "Delete"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleRecalculate(acc.id)}
+                              disabled={recalcId === acc.id}
+                              className="flex items-center gap-1 text-[10px] text-text-disabled hover:text-text-primary transition-colors"
+                              title="Recalculate balance from trades"
+                            >
+                              <RefreshCw className={cn("size-3", recalcId === acc.id && "animate-spin")} />
+                              Recalculate
+                            </button>
+                            {acc.last_synced_at && (
+                              <span className="text-[10px] text-text-disabled">
+                                · Sync: {new Date(acc.last_synced_at).toLocaleDateString("es-ES")}
+                              </span>
+                            )}
+                          </div>
+
+                          {!isActive && (
+                            <button
+                              onClick={() => handleSetActive(acc.id)}
+                              className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/70 transition-colors"
+                            >
+                              <Check className="size-3" />
+                              Activate
+                            </button>
                           )}
                         </div>
-                        {acc.broker && (
-                          <p className="text-xs text-text-disabled">{acc.broker}{acc.account_number ? ` · #${acc.account_number}` : ""}</p>
-                        )}
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <p className="text-base font-mono font-semibold text-text-primary">
-                          {acc.currency} {acc.current_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                        </p>
-                        <p className={cn("text-xs font-mono", pnl >= 0 ? "text-profit" : "text-loss")}>
-                          {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%)
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Balance bar */}
-                    <div className="h-1 bg-surface-2 rounded-full overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", pnl >= 0 ? "bg-profit/60" : "bg-loss/60")}
-                        style={{ width: `${Math.min(Math.abs(pnlPct) * 2, 100)}%` }}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {/* Recalculate */}
-                        <button
-                          onClick={() => handleRecalculate(acc.id)}
-                          disabled={recalcId === acc.id}
-                          className="flex items-center gap-1 text-[10px] text-text-disabled hover:text-text-primary transition-colors"
-                          title="Recalculate balance from trades"
-                        >
-                          <RefreshCw className={cn("size-3", recalcId === acc.id && "animate-spin")} />
-                          Recalculate
-                        </button>
-                        {acc.last_synced_at && (
-                          <span className="text-[10px] text-text-disabled">
-                            · Sync: {new Date(acc.last_synced_at).toLocaleDateString("es-ES")}
-                          </span>
-                        )}
-                      </div>
-
-                      {!isActive && (
-                        <button
-                          onClick={() => handleSetActive(acc.id)}
-                          className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/70 transition-colors"
-                        >
-                          <Check className="size-3" />
-                          Activate
-                        </button>
-                      )}
-                    </div>
+                      </>
+                    )}
 
                     {/* MT5 webhook info */}
-                    {acc.type === "MT5" && acc.webhook_token && (
+                    {!isEditing && acc.type === "MT5" && acc.webhook_token && (
                       <div className="pt-2 border-t border-border">
                         <p className="text-[10px] text-text-disabled mb-1.5">EA Configuration (MT5)</p>
                         <div className="space-y-1">
@@ -387,7 +560,7 @@ export default function SettingsPage() {
                     )}
 
                     {/* MetaApi Auto Sync */}
-                    {acc.type === "MT5" && (
+                    {!isEditing && acc.type === "MT5" && (
                       <div className="pt-2 border-t border-border">
                         <p className="text-[10px] text-text-disabled mb-2">MetaApi Auto Sync</p>
 

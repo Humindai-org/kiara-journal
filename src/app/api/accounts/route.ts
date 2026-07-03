@@ -48,6 +48,24 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ account: data });
 }
 
+// DELETE — eliminar cuenta y sus trades (cascade)
+export async function DELETE(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const { id } = body;
+  if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from("accounts").delete().eq("id", id).eq("user_id", user.id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 // PATCH — actualizar cuenta (nombre, balance activo, etc.)
 export async function PATCH(req: NextRequest) {
   const supabase = await createClient();
