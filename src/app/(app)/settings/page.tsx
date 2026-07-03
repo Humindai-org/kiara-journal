@@ -73,7 +73,7 @@ export default function SettingsPage() {
   const [connectingId,    setConnectingId]    = useState<string | null>(null);
   const [syncingId,       setSyncingId]       = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const [metaapiForm, setMetaapiForm] = useState<Record<string, { server: string; password: string }>>({});
+  const [metaapiForm, setMetaapiForm] = useState<Record<string, { server: string; password: string; login: string }>>({});
 
   async function load() {
     setLoading(true);
@@ -201,7 +201,12 @@ export default function SettingsPage() {
     const res = await fetch("/api/metaapi/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ account_id: accountId, mt5_password: f.password, mt5_server: f.server || undefined }),
+      body: JSON.stringify({
+        account_id:   accountId,
+        mt5_password: f.password,
+        mt5_server:   f.server || undefined,
+        mt5_login:    f.login  || undefined,
+      }),
     });
     const json = await res.json();
     if (!res.ok) {
@@ -599,7 +604,19 @@ export default function SettingsPage() {
                         ) : (
                           /* Not connected — show connect form */
                           <div className="space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[9px] text-text-disabled block mb-1">MT5 Login *</label>
+                                <input
+                                  value={metaapiForm[acc.id]?.login ?? ""}
+                                  onChange={e => setMetaapiForm(prev => ({
+                                    ...prev,
+                                    [acc.id]: { ...prev[acc.id], login: e.target.value, server: prev[acc.id]?.server ?? "", password: prev[acc.id]?.password ?? "" },
+                                  }))}
+                                  placeholder={acc.account_number ?? "570416698"}
+                                  className="w-full bg-surface-2 border border-border-light rounded px-2 py-1 text-[10px] font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                                />
+                              </div>
                               <div>
                                 <label className="text-[9px] text-text-disabled block mb-1">
                                   MT5 Server{acc.mt5_server ? ` (${acc.mt5_server})` : ""}
@@ -608,9 +625,9 @@ export default function SettingsPage() {
                                   value={metaapiForm[acc.id]?.server ?? ""}
                                   onChange={e => setMetaapiForm(prev => ({
                                     ...prev,
-                                    [acc.id]: { ...prev[acc.id], server: e.target.value, password: prev[acc.id]?.password ?? "" },
+                                    [acc.id]: { ...prev[acc.id], server: e.target.value, login: prev[acc.id]?.login ?? "", password: prev[acc.id]?.password ?? "" },
                                   }))}
-                                  placeholder={acc.mt5_server ?? "TheTradingPit-Live"}
+                                  placeholder={acc.mt5_server ?? "OrbexGlobal-Server"}
                                   className="w-full bg-surface-2 border border-border-light rounded px-2 py-1 text-[10px] font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
                                 />
                               </div>
@@ -623,7 +640,7 @@ export default function SettingsPage() {
                                   value={metaapiForm[acc.id]?.password ?? ""}
                                   onChange={e => setMetaapiForm(prev => ({
                                     ...prev,
-                                    [acc.id]: { ...prev[acc.id], password: e.target.value, server: prev[acc.id]?.server ?? "" },
+                                    [acc.id]: { ...prev[acc.id], password: e.target.value, login: prev[acc.id]?.login ?? "", server: prev[acc.id]?.server ?? "" },
                                   }))}
                                   placeholder="read-only password"
                                   className="w-full bg-surface-2 border border-border-light rounded px-2 py-1 text-[10px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
@@ -632,7 +649,7 @@ export default function SettingsPage() {
                             </div>
                             <button
                               onClick={() => handleMetaApiConnect(acc.id)}
-                              disabled={connectingId === acc.id || !metaapiForm[acc.id]?.password}
+                              disabled={connectingId === acc.id || !metaapiForm[acc.id]?.password || !metaapiForm[acc.id]?.login}
                               className="flex items-center gap-1.5 text-[10px] text-accent border border-accent/30 hover:border-accent/60 rounded px-2.5 py-1 transition-colors disabled:opacity-50"
                             >
                               <Zap className="size-3" />
