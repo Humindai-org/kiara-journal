@@ -43,21 +43,19 @@ function parseNum(raw: string): number {
 }
 
 function splitLine(line: string, sep: string): string[] {
-  // Strip surrounding quotes if present
   return line.split(sep).map(c => c.trim().replace(/^"(.*)"$/, "$1"));
 }
+
+// Section headers that mark non-position data in the report
+const SECTION_HEADERS = ["deals", "orders", "open positions", "working orders", "balance operations"];
 
 /**
  * Parses an MT5 Trade History Report CSV (exported via Account History → Save as Report).
  *
- * Handles:
- *  - Metadata header rows (Trade History Report, Name, Account, etc.)
- *  - Tab or comma separation
- *  - European decimal commas ("4782,08")
- *  - Double-dash negatives ("--0,60")
- *  - Trailing dot in symbol name ("XAUUSD.")
+ * Only parses rows in the "Positions" section (closed trades).
+ * Stops at other section headers (Deals, Orders, etc.).
  *
- * Column layout (after metadata rows, no leading "#" column):
+ * Column layout:
  *   0:Time(open)  1:Position  2:Symbol  3:Type  4:Volume  5:Price(entry)
  *   6:S/L  7:T/P  8:Time(close)  9:Price(exit)  10:Commission  11:Swap  12:Profit
  */
@@ -67,9 +65,21 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
   if (lines.length < 2) return [];
 
   const results: ParsedTrade[] = [];
+  const dateRe = /^\d{4}\.\d{2}\.\d{2}/;
+
+  let inPositions = false;
 
   for (const line of lines) {
     const cols = splitLine(line, sep);
+    const firstCell = cols[0].trim().toLowerCase();
+
+    // Detect section headers
+    if (cols.length <= 3 || (cols.filter(c => c !== "").length <= 2)) {
+      const normalized = firstCell.replace(/[^a-z ]/g, "").trim();
+      if (normalized === "positions") { inPositions = true; continue; }
+      if (SECTION_HEADERS.includes(normalized)) { inPositions = false; continue; }
+    }
+
     if (cols.length < 10) continue;
 
     // Identify trade rows by Type column (index 3) being "buy" or "sell"
@@ -82,9 +92,13 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
 
     const openTimeRaw  = cols[0];
     const closeTimeRaw = cols[8];
-    // Must look like a date: "2026.04.01 ..."
-    const dateRe = /^\d{4}\.\d{2}\.\d{2}/;
+
+    // Both timestamps must look like "YYYY.MM.DD ..."
     if (!dateRe.test(openTimeRaw) || !dateRe.test(closeTimeRaw)) continue;
+
+    const exitPrice = parseNum(cols[9]);
+    // exit_price = 0 means this is an open position or partial deal — skip
+    if (exitPrice === 0) continue;
 
     const openTime  = parseMT5DateTime(openTimeRaw);
     const closeTime = parseMT5DateTime(closeTimeRaw);
@@ -103,11 +117,11 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
 
     results.push({
       mt5_ticket:       ticket,
-      instrument:       cols[2].replace(/\.$/, ""), // strip trailing "." e.g. "XAUUSD."
+      instrument:       cols[2].replace(/\.$/, ""),
       direction:        type === "buy" ? "LONG" : "SHORT",
       lot_size:         parseNum(cols[4]),
       entry_price:      parseNum(cols[5]),
-      exit_price:       parseNum(cols[9]),
+      exit_price:       exitPrice,
       sl:               slRaw !== 0 ? slRaw : null,
       tp:               tpRaw !== 0 ? tpRaw : null,
       open_time:        openTime,
