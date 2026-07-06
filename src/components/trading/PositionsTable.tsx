@@ -57,6 +57,23 @@ function fmtDateTime(iso: string) {
   return { day, time };
 }
 
+function fmtDateFull(iso: string) {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  return `${date} · ${time}`;
+}
+
+function fmtDuration(minutes: number) {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h < 24) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  const days = Math.floor(h / 24);
+  const remH = h % 24;
+  return remH > 0 ? `${days}d ${remH}h` : `${days}d`;
+}
+
 function calcChange(t: TradeRow): number | null {
   if (t.exit_price == null || t.entry_price === 0) return null;
   return ((t.exit_price - t.entry_price) / t.entry_price) * 100;
@@ -79,6 +96,7 @@ export default function PositionsTable() {
   const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [pnlPopup, setPnlPopup]     = useState<TradeRow | null>(null);
+  const [datePopup, setDatePopup]   = useState<TradeRow | null>(null);
   const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
@@ -369,15 +387,13 @@ export default function PositionsTable() {
                         : "—"}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div>
+                      <button
+                        onClick={() => setDatePopup(t)}
+                        className="text-left hover:opacity-70 transition-opacity"
+                      >
                         <span className="text-text-disabled text-[10px]">{day}</span>
                         <span className="ml-1 text-text-secondary">{time}</span>
-                      </div>
-                      {t.close_time && (
-                        <div className="text-[10px] text-text-disabled mt-0.5">
-                          ↳ {fmtDateTime(t.close_time).time}
-                        </div>
-                      )}
+                      </button>
                     </td>
                     <td className="px-3 py-2.5 text-text-secondary">
                       {t.duration_minutes != null ? `${t.duration_minutes}m` : "—"}
@@ -538,6 +554,57 @@ export default function PositionsTable() {
           </div>
         );
       })()}
+
+      {/* ── Date/Time Popup ─────────────────────────────── */}
+      {datePopup && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setDatePopup(null)}
+        >
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative card p-5 w-64 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <span className="text-xs font-medium text-text-primary">{datePopup.instrument}</span>
+                <span className={cn(
+                  "ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded",
+                  datePopup.direction === "LONG" ? "badge-profit" : "badge-loss"
+                )}>
+                  {datePopup.direction}
+                </span>
+              </div>
+              <button
+                onClick={() => setDatePopup(null)}
+                className="text-text-disabled hover:text-text-primary transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-[10px] text-text-disabled uppercase tracking-wider mb-1">Entry date</p>
+                <p className="text-xs font-mono text-text-primary">{fmtDateFull(datePopup.open_time)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-text-disabled uppercase tracking-wider mb-1">Exit date</p>
+                <p className="text-xs font-mono text-text-primary">
+                  {datePopup.close_time ? fmtDateFull(datePopup.close_time) : "—"}
+                </p>
+              </div>
+              {datePopup.duration_minutes != null && (
+                <div className="pt-2 border-t border-border">
+                  <p className="text-[10px] text-text-disabled uppercase tracking-wider mb-1">Duration</p>
+                  <p className="text-xs font-mono text-text-primary">{fmtDuration(datePopup.duration_minutes)}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
