@@ -15,6 +15,7 @@ export type ParsedTrade = {
   net_pnl: number;
   fees: number;
   swap: number;
+  return_r: number | null;
   source: "MT5";
 };
 
@@ -23,6 +24,19 @@ function parseMT5DateTime(raw: string): string {
   return raw.trim()
     .replace(/^(\d{4})\.(\d{2})\.(\d{2})/, "$1-$2-$3")
     .replace(" ", "T") + ".000Z";
+}
+
+function calcReturnR(
+  direction: "LONG" | "SHORT",
+  entryPrice: number,
+  exitPrice: number,
+  sl: number | null,
+): number | null {
+  if (!sl || !entryPrice) return null;
+  const slDist = Math.abs(entryPrice - sl);
+  if (slDist === 0) return null;
+  const tradeDist = direction === "LONG" ? exitPrice - entryPrice : entryPrice - exitPrice;
+  return Math.round((tradeDist / slDist) * 100) / 100;
 }
 
 function detectSession(isoUtc: string): ParsedTrade["session"] {
@@ -115,14 +129,18 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
     const swap       = parseNum(cols[11]);
     const grossPnl   = cols[12] !== undefined ? parseNum(cols[12]) : 0;
 
+    const direction: "LONG" | "SHORT" = type === "buy" ? "LONG" : "SHORT";
+    const sl = slRaw !== 0 ? slRaw : null;
+    const entryPrice = parseNum(cols[5]);
+
     results.push({
       mt5_ticket:       ticket,
       instrument:       cols[2].replace(/\.$/, ""),
-      direction:        type === "buy" ? "LONG" : "SHORT",
+      direction,
       lot_size:         parseNum(cols[4]),
-      entry_price:      parseNum(cols[5]),
+      entry_price:      entryPrice,
       exit_price:       exitPrice,
-      sl:               slRaw !== 0 ? slRaw : null,
+      sl,
       tp:               tpRaw !== 0 ? tpRaw : null,
       open_time:        openTime,
       close_time:       closeTime,
@@ -132,6 +150,7 @@ export function parseMT5CSV(text: string): ParsedTrade[] {
       net_pnl:          Math.round((grossPnl + commission + swap) * 100) / 100,
       fees:             Math.round(commission * 100) / 100,
       swap:             Math.round(swap       * 100) / 100,
+      return_r:         calcReturnR(direction, entryPrice, exitPrice, sl),
       source:           "MT5",
     });
   }
