@@ -69,9 +69,32 @@ export default function TradingPage() {
     field: "max_daily_loss" | "max_daily_profit" | "max_trades_per_day",
     value: number,
   ) {
-    if (!plan) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
+    const sb = supabase as any;
+
+    if (!plan) {
+      // No active plan yet — create a default one with this first value
+      const defaults = { max_trades_per_day: 3, max_daily_loss: 300, max_daily_profit: 500 };
+      const { data } = await sb
+        .from("plans")
+        .insert({
+          user_id: user.id,
+          name: "MATVARD — Fase 2",
+          plan_type: "MATVARD",
+          is_active: true,
+          ...defaults,
+          [field]: value,
+        })
+        .select("id, max_trades_per_day, max_daily_loss, max_daily_profit")
+        .maybeSingle();
+      if (data) setPlan(data as Plan);
+      return;
+    }
+
+    const { data } = await sb
       .from("plans")
       .update({ [field]: value })
       .eq("id", plan.id)
