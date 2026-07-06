@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  TrendingUp, TrendingDown, Target, Shield, Activity, Percent, Award, AlertTriangle,
+  TrendingUp, TrendingDown, Target, Shield, Activity, Percent, Award, AlertTriangle, X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
@@ -18,9 +18,142 @@ type Trade = {
   net_pnl: number | null;
   return_r: number | null;
   open_time: string;
+  close_time: string | null;
   session: string | null;
   followed_plan: boolean | null;
+  notes: string | null;
 };
+
+type DisciplineGroup = {
+  name: string;
+  total: number;
+  rate: number;
+  violations: Trade[];
+};
+
+function buildDisciplineGroups(
+  trades: Trade[],
+  keyFn: (t: Trade) => string,
+): DisciplineGroup[] {
+  const map: Record<string, { total: number; violations: Trade[] }> = {};
+  for (const t of trades) {
+    if (t.followed_plan === null) continue;
+    const k = keyFn(t);
+    if (!map[k]) map[k] = { total: 0, violations: [] };
+    map[k].total++;
+    if (!t.followed_plan) map[k].violations.push(t);
+  }
+  return Object.entries(map)
+    .map(([name, v]) => ({
+      name,
+      total: v.total,
+      violations: v.violations,
+      rate: ((v.total - v.violations.length) / v.total) * 100,
+    }))
+    .filter(g => g.total >= 2)
+    .sort((a, b) => a.rate - b.rate);
+}
+
+function DisciplineRow({ group, onClick }: { group: DisciplineGroup; onClick: () => void }) {
+  const color = group.rate >= 80 ? "bg-profit" : group.rate >= 60 ? "bg-warning" : "bg-loss";
+  const textColor = group.rate >= 80 ? "text-profit" : group.rate >= 60 ? "text-warning" : "text-loss";
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 hover:bg-surface-hi rounded-lg px-2 py-1.5 transition-colors group"
+    >
+      <span className="text-[11px] font-mono text-text-secondary w-20 text-left shrink-0 truncate">
+        {group.name}
+      </span>
+      <div className="flex-1 h-1.5 bg-surface-2 rounded-full overflow-hidden">
+        <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${group.rate}%` }} />
+      </div>
+      <span className={cn("text-[11px] font-mono w-10 text-right shrink-0", textColor)}>
+        {group.rate.toFixed(0)}%
+      </span>
+      {group.violations.length > 0 ? (
+        <span className="text-[10px] text-loss bg-loss/10 rounded px-1.5 py-0.5 shrink-0 w-8 text-center">
+          {group.violations.length}✗
+        </span>
+      ) : (
+        <span className="w-8 shrink-0" />
+      )}
+    </button>
+  );
+}
+
+function ViolationPopup({ group, onClose }: { group: { name: string; violations: Trade[] }; onClose: () => void }) {
+  function fmtDate(iso: string) {
+    return new Date(iso).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "2-digit" });
+  }
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="card w-full max-w-lg mx-4 p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">{group.name}</h3>
+            <p className="text-[11px] text-text-disabled mt-0.5">
+              {group.violations.length} trade{group.violations.length !== 1 ? "s" : ""} donde no se siguió el plan
+            </p>
+          </div>
+          <button onClick={onClose} className="text-text-disabled hover:text-text-secondary mt-0.5">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {group.violations.length === 0 ? (
+          <p className="text-sm text-text-disabled text-center py-6">Sin violaciones registradas</p>
+        ) : (
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+            {group.violations.map((t) => (
+              <div key={t.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-surface-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-text-disabled font-mono">{fmtDate(t.open_time)}</span>
+                    <span className={cn(
+                      "text-[10px] font-semibold",
+                      t.direction === "LONG" ? "text-profit" : "text-loss"
+                    )}>
+                      {t.direction}
+                    </span>
+                    <span className="text-[10px] text-text-secondary font-mono">{t.instrument}</span>
+                    {t.session && (
+                      <span className="text-[10px] text-text-disabled">
+                        {t.session.replace("_", " ")}
+                      </span>
+                    )}
+                  </div>
+                  {t.notes && (
+                    <p className="text-[11px] text-text-secondary mt-1 leading-tight">{t.notes}</p>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <span className={cn(
+                    "text-xs font-mono font-medium",
+                    (t.net_pnl ?? 0) >= 0 ? "text-profit" : "text-loss"
+                  )}>
+                    {(t.net_pnl ?? 0) >= 0 ? "+" : ""}${(t.net_pnl ?? 0).toFixed(2)}
+                  </span>
+                  {t.return_r != null && (
+                    <p className="text-[10px] text-text-disabled font-mono">
+                      {t.return_r >= 0 ? "+" : ""}{t.return_r.toFixed(2)}R
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const INITIAL_BALANCE = 100000;
 const DD_LIMIT = 10000;
@@ -115,13 +248,14 @@ export default function DashboardPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [equityPeriod, setEquityPeriod] = useState<"1W" | "1M" | "3M" | "all">("all");
+  const [detail, setDetail] = useState<{ name: string; violations: Trade[] } | null>(null);
 
   useEffect(() => {
     if (!activeAccountId) { setLoading(false); return; }
     setLoading(true);
     supabase
       .from("trades")
-      .select("id, instrument, direction, net_pnl, return_r, open_time, session, followed_plan")
+      .select("id, instrument, direction, net_pnl, return_r, open_time, close_time, session, followed_plan, notes")
       .eq("account_id", activeAccountId)
       .not("net_pnl", "is", null)
       .order("open_time", { ascending: true })
@@ -195,11 +329,15 @@ export default function DashboardPage() {
     const balance = initialBalance + totalPnl;
     const progressToTarget = Math.max(0, Math.min(100, (totalPnl / PROFIT_TARGET) * 100));
 
+    const instrGroups = buildDisciplineGroups(closed, t => t.instrument);
+    const sessionGroups = buildDisciplineGroups(closed, t => t.session?.replace("_", " ") ?? "—");
+
     return {
       totalPnl, winRate, profitFactor, avgWin, avgLoss, avgR, expectancy,
       tradeCount: closed.length, winCount: wins.length, lossCount: losses.length,
       equity, maxDD, balance, disciplineRate, evaluatedCount: evaluated.length,
       sessionData, instrData, progressToTarget, streak,
+      instrGroups, sessionGroups,
     };
   }, [trades, initialBalance]);
 
@@ -427,12 +565,59 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ── Discipline breakdown ──────────────────── */}
+        {hasData && (stats.instrGroups.length > 0 || stats.sessionGroups.length > 0) && (
+          <div className="grid grid-cols-2 gap-4">
+            {stats.instrGroups.length > 0 && (
+              <div className="card p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Shield className="size-4 text-accent" />
+                  <p className="text-sm font-medium text-text-primary">Discipline by instrument</p>
+                  <span className="text-[10px] text-text-disabled ml-auto">click to see details</span>
+                </div>
+                <div className="space-y-0.5">
+                  {stats.instrGroups.map((g) => (
+                    <DisciplineRow
+                      key={g.name}
+                      group={g}
+                      onClick={() => setDetail({ name: g.name, violations: g.violations })}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {stats.sessionGroups.length > 0 && (
+              <div className="card p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Shield className="size-4 text-accent" />
+                  <p className="text-sm font-medium text-text-primary">Discipline by session</p>
+                  <span className="text-[10px] text-text-disabled ml-auto">click to see details</span>
+                </div>
+                <div className="space-y-0.5">
+                  {stats.sessionGroups.map((g) => (
+                    <DisciplineRow
+                      key={g.name}
+                      group={g}
+                      onClick={() => setDetail({ name: g.name, violations: g.violations })}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {!hasData && (
           <div className="card p-12 text-center">
             <p className="text-sm text-text-disabled">Register trades in the Journal to see your stats here.</p>
           </div>
         )}
+
       </main>
+
+      {detail && (
+        <ViolationPopup group={detail} onClose={() => setDetail(null)} />
+      )}
     </div>
   );
 }
