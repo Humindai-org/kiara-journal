@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ExternalLink, RefreshCw, X, SlidersHorizontal, Upload } from "lucide-react";
+import { BookOpen, PenLine, RefreshCw, X, SlidersHorizontal, Upload } from "lucide-react";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -266,10 +266,10 @@ export default function PositionsTable() {
           />
           <input
             type="text"
-            placeholder="Ticket…"
+            placeholder="Position…"
             value={filters.ticket}
             onChange={e => setFilters(f => ({ ...f, ticket: e.target.value }))}
-            className="h-6 w-20 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light placeholder:text-text-disabled focus:outline-none focus:border-accent"
+            className="h-6 w-24 bg-surface-hi text-[10px] text-text-primary px-2 rounded border border-border-light placeholder:text-text-disabled focus:outline-none focus:border-accent"
           />
           {active && (
             <button
@@ -300,7 +300,7 @@ export default function PositionsTable() {
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-surface z-10">
               <tr className="border-b border-border">
-                {["Pair", "Dir.", "Lots", "Entry", "Exit", "SL", "TP", "P&L", "R", "Chg%", "Date/Time", "Dur.", ""].map((h) => (
+                {["Pair", "Position", "Dir.", "Lots", "Entry", "Exit", "SL", "TP", "P&L", "R", "Change", "Date/Time", "Held", ""].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-left text-text-secondary font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -320,6 +320,9 @@ export default function PositionsTable() {
                       {t.source === "MT5" && (
                         <span className="ml-1 text-[9px] text-text-disabled font-normal">MT5</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[10px] text-text-disabled whitespace-nowrap">
+                      {t.mt5_ticket ?? "—"}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={cn(
@@ -366,23 +369,38 @@ export default function PositionsTable() {
                         : "—"}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span className="text-text-disabled text-[10px]">{day}</span>
-                      <span className="ml-1 text-text-secondary">{time}</span>
+                      <div>
+                        <span className="text-text-disabled text-[10px]">{day}</span>
+                        <span className="ml-1 text-text-secondary">{time}</span>
+                      </div>
+                      {t.close_time && (
+                        <div className="text-[10px] text-text-disabled mt-0.5">
+                          ↳ {fmtDateTime(t.close_time).time}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-text-secondary">
                       {t.duration_minutes != null ? `${t.duration_minutes}m` : "—"}
                     </td>
                     <td className="px-3 py-2.5">
-                      <Link
-                        href={`/journal/${t.id}`}
-                        className={cn(
-                          "flex items-center gap-1 transition-colors text-[10px] whitespace-nowrap",
-                          hasJournal ? "text-text-disabled hover:text-text-primary" : "text-accent hover:text-accent/70"
-                        )}
-                      >
-                        {hasJournal ? "View" : "Journalize"}
-                        <ExternalLink className="size-3" />
-                      </Link>
+                      <div className="relative group/journal inline-block">
+                        <Link
+                          href={`/journal/${t.id}`}
+                          className={cn(
+                            "flex items-center justify-center size-6 rounded transition-colors",
+                            hasJournal
+                              ? "text-text-disabled hover:text-text-primary hover:bg-surface-2"
+                              : "text-accent hover:text-accent/70 hover:bg-accent/10"
+                          )}
+                        >
+                          {hasJournal
+                            ? <BookOpen className="size-3.5" />
+                            : <PenLine className="size-3.5" />}
+                        </Link>
+                        <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-surface-hi border border-border rounded text-[10px] text-text-primary whitespace-nowrap opacity-0 group-hover/journal:opacity-100 transition-opacity pointer-events-none z-20">
+                          {hasJournal ? "View journal entry" : "Journal your trade now"}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 );
