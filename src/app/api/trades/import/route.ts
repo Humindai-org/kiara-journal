@@ -60,6 +60,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Remove spurious zero-P&L MT5 rows created by a previous parser bug that
+  // processed the Orders section (producing rows with net_pnl = 0 and different
+  // ticket numbers that are not part of the Positions data).
+  // After the upsert above, all legitimate position rows have a non-zero net_pnl,
+  // so rows with net_pnl = 0 are safe to discard.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (serviceSupabase as any)
+    .from("trades")
+    .delete()
+    .eq("account_id", account_id)
+    .eq("source", "MT5")
+    .not("mt5_ticket", "is", null)
+    .eq("net_pnl", 0);
+
   // Recalculate account balance from imported trades
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (serviceSupabase as any).rpc("recalculate_account_balance", { p_account_id: account_id });
