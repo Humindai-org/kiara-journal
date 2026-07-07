@@ -150,5 +150,88 @@ export async function POST(req: NextRequest) {
     await (supabase as any).rpc("recalculate_account_balance", { p_account_id: account.id });
   }
 
+  // ── Match pending trade with this MT5 event ───────────────────────────────
+  // When the user logs a trade via the app (status='pending'), the webhook links
+  // it to the real MT5 ticket as soon as the EA fires.
+  if (isOpen) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: pendingTrades } = await (supabase as any)
+      .from("trades")
+      .select("id")
+      .eq("account_id", account.id)
+      .eq("instrument", body.symbol)
+      .eq("direction", body.direction)
+      .eq("status", "pending")
+      .is("mt5_ticket", null)
+      .order("open_time", { ascending: false })
+      .limit(1);
+
+    if (pendingTrades && pendingTrades.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from("trades")
+        .update({ status: "open", mt5_ticket: body.position_id, entry_price: body.open_price })
+        .eq("id", pendingTrades[0].id);
+    }
+  }
+
+  // ── Check daily exposure and send Telegram alert if needed ───────────────
+  try {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: accLimits } = await (supabase as any)
+      .from("accounts")
+      .select("personal_daily_stop_usd")
+      .eq("id", account.id)
+      .single();
+
+    const personalStop: number = accLimits?.personal_daily_stop_usd ?? 300;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: todayTrades } = await (supabase as any)
+      .from("trades")
+      .select("net_pnl, close_time")
+      .eq("account_id", account.id)
+      .gte("open_time", todayStart.toISOString());
+
+    const rows: Array<{ net_pnl: number | null; close_time: string | null }> = todayTrades ?? [];
+    const realizedPnL = rows
+      .filter(t => t.close_time !== null)
+      .reduce((sum, t) => sum + (t.net_pnl ?? 0), 0);
+
+    const unrealizedFromEvent = isOpen ? (body.unrealized_pnl ?? 0) : 0;
+    const totalExposure = realizedPnL + unrealizedFromEvent;
+    const absLoss = Math.abs(Math.min(0, totalExposure));
+    const pct = absLoss / personalStop;
+
+    const appBase = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+
+    if (pct >= 1.0) {
+      await fetch(`${appBase}/api/notify/telegram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `🛑 *STOP DIARIO ALCANZADO*\n\nPérdida del día: *$${absLoss.toFixed(2)}* de $${personalStop} límite.\nCierra todas las posiciones abiertas.`,
+          throttle_key: `breach-${account.id}`,
+        }),
+      });
+    } else if (pct >= 0.8) {
+      await fetch(`${appBase}/api/notify/telegram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `⚠️ *Alerta de riesgo diario*\n\nLlevas *$${absLoss.toFixed(2)}* en pérdidas hoy (${Math.round(pct * 100)}% de tu límite de $${personalStop}).\n\nPrecaución: queda solo $${(personalStop - absLoss).toFixed(2)} de margen.`,
+          throttle_key: `danger-${account.id}`,
+        }),
+      });
+    }
+  } catch (alertErr) {
+    console.error("[mt5/webhook] alert error:", alertErr);
+  }
+
   return NextResponse.json({ ok: true, ticket: body.position_id, type: isOpen ? "open" : "closed" });
 }
