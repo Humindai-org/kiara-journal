@@ -33,6 +33,6 @@ export const useAccountStore = create<AccountStore>()(
         return accounts.find((a) => a.id === activeAccountId) ?? null;
       },
     }),
-    { name: "kiara-active-account", partialize: (s) => ({ activeAccountId: s.activeAccountId }) }
+    { name: "active-account", partialize: (s) => ({ activeAccountId: s.activeAccountId }) }
   )
 );

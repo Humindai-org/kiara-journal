@@ -1,5 +1,5 @@
--- ─── Seed inicial — cuenta TTP CFD Prime $100K ───────────────
--- Ejecutar DESPUÉS de crear el usuario en Supabase Auth.
+-- ─── Seed inicial — ejemplo de cuenta (opcional) ─────────────
+-- Solo ejecutar si quieres una cuenta de ejemplo.
 -- Reemplaza el UUID por el tuyo: Auth → Users → tu usuario → User UID
 
 insert into public.accounts (
@@ -14,14 +14,14 @@ insert into public.accounts (
   is_active
 )
 values (
-  'REEMPLAZA-CON-TU-USER-UUID',  1da653e8-9c73-48bb-b575-e6d6271ca1c7
-  'TTP CFD Prime $100K',
+  'REEMPLAZA-CON-TU-USER-UUID',
+  'Mi Cuenta — $100K',
   'MANUAL',
   'The Trading Pit',
   'Phase 2',
   'USD',
   100000.00,
-  96867.01,
+  100000.00,
   true
 )
 on conflict do nothing;
