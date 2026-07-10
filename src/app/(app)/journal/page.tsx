@@ -56,6 +56,20 @@ export default function JournalPage() {
   const [filterMarket, setFilterMarket] = useState<"ALL" | "FOREX" | "METALS" | "INDICES">("ALL");
   const [filterSession, setFilterSession] = useState<"ALL" | "LONDON" | "NEW_YORK" | "OVERLAP" | "TOKYO">("ALL");
 
+  // Clear selected day when filter changes and that day has no matching trades
+  useEffect(() => {
+    if (selectedDay === null) return;
+    const hasTradesOnDay = trades.some(t => {
+      const d = new Date(t.open_time).getDate();
+      if (d !== selectedDay) return false;
+      if (filterDir !== "ALL" && t.direction !== filterDir) return false;
+      if (filterMarket !== "ALL" && inferMarket(t.instrument) !== filterMarket) return false;
+      if (filterSession !== "ALL" && t.session !== filterSession) return false;
+      return true;
+    });
+    if (!hasTradesOnDay) setSelectedDay(null);
+  }, [filterDir, filterMarket, filterSession, selectedDay, trades]);
+
   const supabase = useMemo(() => createClient(), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -111,27 +125,31 @@ export default function JournalPage() {
     else setMonth(m => m + 1);
   }
 
-  const byDay = useMemo(() => {
-    const map: Record<number, Trade[]> = {};
-    for (const t of trades) {
-      const d = new Date(t.open_time).getDate();
-      if (!map[d]) map[d] = [];
-      map[d].push(t);
-    }
-    return map;
-  }, [trades]);
-
-  const selectedTrades = selectedDay ? (byDay[selectedDay] ?? []) : [];
-  const filteredTrades = directionFilter === "ALL"
-    ? selectedTrades
-    : selectedTrades.filter(t => t.direction === directionFilter);
-  const filteredPnL = filteredTrades.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
+  // Apply global filters first — drives both calendar and stats
   const filteredMonthTrades = useMemo(() => trades.filter(t => {
     if (filterDir !== "ALL" && t.direction !== filterDir) return false;
     if (filterMarket !== "ALL" && inferMarket(t.instrument) !== filterMarket) return false;
     if (filterSession !== "ALL" && t.session !== filterSession) return false;
     return true;
   }), [trades, filterDir, filterMarket, filterSession]);
+
+  // Calendar groups based on filtered trades
+  const byDay = useMemo(() => {
+    const map: Record<number, Trade[]> = {};
+    for (const t of filteredMonthTrades) {
+      const d = new Date(t.open_time).getDate();
+      if (!map[d]) map[d] = [];
+      map[d].push(t);
+    }
+    return map;
+  }, [filteredMonthTrades]);
+
+  const selectedTrades = selectedDay ? (byDay[selectedDay] ?? []) : [];
+  // Right-panel direction pill: sub-filter within the already-globally-filtered day trades
+  const filteredTrades = directionFilter === "ALL"
+    ? selectedTrades
+    : selectedTrades.filter(t => t.direction === directionFilter);
+  const filteredPnL = filteredTrades.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
 
   const statsBase = filteredMonthTrades;
   const monthPnL = statsBase.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
