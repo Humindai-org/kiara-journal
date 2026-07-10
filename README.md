@@ -1,36 +1,171 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trading Journal
 
-## Getting Started
+Journal de trading personal con gestión de cuentas, análisis de setups y seguimiento de drawdown en tiempo real.
 
-First, run the development server:
+**Stack:** Next.js 16 · Supabase · Vercel · Anthropic Claude
+
+---
+
+## Acceso rápido (recomendado para testers)
+
+Si alguien ya tiene el proyecto desplegado, puede invitarte sin que necesites configurar nada de infraestructura.
+
+**Pide al administrador:**
+1. Que vaya a su proyecto en [supabase.com](https://supabase.com) → **Authentication → Users → Add user**
+2. Que ingrese tu email y una contraseña temporal
+3. Te comparte la URL del app (ejemplo: `https://tu-proyecto.vercel.app`)
+
+Con eso ya puedes entrar, crear tus propias cuentas de trading y registrar trades. Tus datos están aislados del resto de usuarios por RLS.
+
+---
+
+## Setup completo (instancia propia)
+
+Sigue estos pasos si quieres desplegar tu propia versión del journal.
+
+### Requisitos
+
+- [Bun](https://bun.sh) instalado
+- Cuenta en [Supabase](https://supabase.com) (gratuita)
+- Cuenta en [Vercel](https://vercel.com) (gratuita)
+- API key de [Anthropic](https://console.anthropic.com) (para Risk Guardian)
+
+---
+
+### 1. Clonar el repositorio
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+git clone https://github.com/Humindai-org/kiara-journal.git
+cd kiara-journal
+bun install
+```
+
+---
+
+### 2. Crear el proyecto en Supabase
+
+1. Ve a [supabase.com](https://supabase.com) → **New project**
+2. Elige un nombre, región y contraseña de base de datos
+3. Espera a que termine de provisionar (~1 min)
+
+#### Correr las migraciones
+
+En el panel de Supabase ve a **SQL Editor** y ejecuta los archivos de `supabase/migrations/` **en orden**:
+
+| Archivo | Qué hace |
+|---|---|
+| `0001_init.sql` | Tablas principales (accounts, plans, trades) |
+| `0002_seed.sql` | Ejemplo de cuenta (opcional — edita o ignora) |
+| `0003_plan_settings.sql` | Configuración de plan de trading |
+| `0004_briefings.sql` | Briefings diarios |
+| `0005_webhook_token.sql` | Token para webhooks MT5 |
+| `0006_recalculate_balance.sql` | Función de recálculo de balance |
+| `0007_metaapi.sql` | Integración MetaAPI |
+| `0008_dd_limits.sql` | Límites de drawdown por cuenta |
+| `0009_trade_status.sql` | Estados del ciclo de vida de trades |
+
+> Copia el contenido de cada archivo y ejecútalo uno a uno en el SQL Editor.
+
+#### Crear tu usuario
+
+En Supabase ve a **Authentication → Users → Add user** e ingresa tu email y contraseña.
+
+#### Obtener las credenciales
+
+En **Project Settings → API** copia:
+- **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
+- **anon public** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **service_role** → `SUPABASE_SERVICE_ROLE_KEY`
+
+---
+
+### 3. Configurar variables de entorno
+
+```bash
+cp .env.local.example .env.local
+```
+
+Edita `.env.local` con tus valores:
+
+```env
+# Supabase — obligatorio
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Anthropic — obligatorio (Risk Guardian)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Noticias de mercado — opcional
+NEWS_API_KEY=...
+
+# Alertas Telegram — opcional
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_USER_ID=...
+```
+
+---
+
+### 4. Correr en local
+
+```bash
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000) → inicia sesión con el usuario que creaste en Supabase.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 5. Desplegar en Vercel
 
-## Learn More
+```bash
+npx vercel
+```
 
-To learn more about Next.js, take a look at the following resources:
+Sigue el wizard. Cuando pida las variables de entorno, agrégalas desde el panel de Vercel (**Settings → Environment Variables**) o con:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx vercel env add NEXT_PUBLIC_SUPABASE_URL
+npx vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+npx vercel env add SUPABASE_SERVICE_ROLE_KEY
+npx vercel env add ANTHROPIC_API_KEY
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Luego redespliega para que tomen efecto:
 
-## Deploy on Vercel
+```bash
+npx vercel --prod
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Crear tu primera cuenta de trading
+
+Una vez dentro del app:
+
+1. Ve a **Settings → Accounts → Add account**
+2. Ingresa el nombre de tu firma, balance inicial y límites de drawdown
+3. El dashboard mostrará tus métricas en tiempo real
+
+Cada usuario solo ve sus propias cuentas y trades — el aislamiento es automático.
+
+---
+
+## Funcionalidades principales
+
+- Dashboard con P&L diario, drawdown y progreso hacia objetivo
+- Risk Guardian: valida cada setup antes de operar (powered by Claude)
+- Registro manual de trades con análisis R:R
+- Importación de trades desde CSV de MT5
+- Briefing diario de mercado
+- Alertas opcionales vía Telegram
+
+---
+
+## Credenciales opcionales
+
+| Servicio | Para qué | Dónde obtenerla |
+|---|---|---|
+| Anthropic | Risk Guardian (análisis de setups) | [console.anthropic.com](https://console.anthropic.com) |
+| NewsAPI | Noticias de mercado en el dashboard | [newsapi.org](https://newsapi.org) |
+| Telegram Bot | Alertas de riesgo en tiempo real | [@BotFather](https://t.me/BotFather) en Telegram |
