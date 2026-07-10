@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, TrendingUp, TrendingDown, Trash2, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, TrendingDown, Trash2, SlidersHorizontal, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
@@ -26,6 +26,12 @@ type Trade = {
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
+function inferMarket(instrument: string) {
+  if (instrument === "XAUUSD") return "METALS";
+  if (instrument === "NAS100" || instrument === "SP500") return "INDICES";
+  return "FOREX";
+}
+
 function firstDayOfMonth(y: number, m: number) {
   return (new Date(y, m, 1).getDay() + 6) % 7; // Monday = 0
 }
@@ -43,6 +49,12 @@ export default function JournalPage() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [directionFilter, setDirectionFilter] = useState<"ALL" | "LONG" | "SHORT">("ALL");
+
+  // Calendar filter state
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterDir, setFilterDir] = useState<"ALL" | "LONG" | "SHORT">("ALL");
+  const [filterMarket, setFilterMarket] = useState<"ALL" | "FOREX" | "METALS" | "INDICES">("ALL");
+  const [filterSession, setFilterSession] = useState<"ALL" | "LONDON" | "NEW_YORK" | "OVERLAP" | "TOKYO">("ALL");
 
   const supabase = useMemo(() => createClient(), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,11 +126,20 @@ export default function JournalPage() {
     ? selectedTrades
     : selectedTrades.filter(t => t.direction === directionFilter);
   const filteredPnL = filteredTrades.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
-  const monthPnL = trades.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
-  const winners = trades.filter(t => (t.net_pnl ?? 0) > 0).length;
-  const winRate = trades.length > 0 ? Math.round((winners / trades.length) * 100) : null;
-  const bestTrade = trades.length > 0 ? Math.max(...trades.map(t => t.net_pnl ?? 0)) : null;
-  const worstTrade = trades.length > 0 ? Math.min(...trades.map(t => t.net_pnl ?? 0)) : null;
+  const filteredMonthTrades = useMemo(() => trades.filter(t => {
+    if (filterDir !== "ALL" && t.direction !== filterDir) return false;
+    if (filterMarket !== "ALL" && inferMarket(t.instrument) !== filterMarket) return false;
+    if (filterSession !== "ALL" && t.session !== filterSession) return false;
+    return true;
+  }), [trades, filterDir, filterMarket, filterSession]);
+
+  const statsBase = filteredMonthTrades;
+  const monthPnL = statsBase.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
+  const winners = statsBase.filter(t => (t.net_pnl ?? 0) > 0).length;
+  const winRate = statsBase.length > 0 ? Math.round((winners / statsBase.length) * 100) : null;
+  const bestTrade = statsBase.length > 0 ? Math.max(...statsBase.map(t => t.net_pnl ?? 0)) : null;
+  const worstTrade = statsBase.length > 0 ? Math.min(...statsBase.map(t => t.net_pnl ?? 0)) : null;
+  const hasActiveFilter = filterDir !== "ALL" || filterMarket !== "ALL" || filterSession !== "ALL";
 
   const totalDays = daysInMonth(year, month);
   const startOffset = firstDayOfMonth(year, month);
@@ -155,45 +176,133 @@ export default function JournalPage() {
           </div>
 
           {/* Stats row */}
-          <div className="flex items-center gap-2 mb-6 bg-surface border border-border rounded-2xl px-5 py-3 overflow-x-auto">
-            {[
-              {
-                label: "Net P&L",
-                value: trades.length > 0 ? `${monthPnL >= 0 ? "+" : "-"}$${Math.abs(monthPnL).toFixed(2)}` : "—",
-                color: trades.length > 0 ? (monthPnL >= 0 ? "text-profit" : "text-loss") : "text-text-disabled",
-              },
-              {
-                label: "Win Rate",
-                value: winRate !== null ? `${winRate}%` : "—",
-                color: "text-text-primary",
-              },
-              {
-                label: "Trades",
-                value: trades.length > 0 ? String(trades.length) : "—",
-                color: "text-text-primary",
-              },
-              {
-                label: "Best Trade",
-                value: bestTrade !== null ? `${bestTrade >= 0 ? "+" : "-"}$${Math.abs(bestTrade).toFixed(2)}` : "—",
-                color: bestTrade !== null && bestTrade >= 0 ? "text-profit" : "text-text-disabled",
-              },
-              {
-                label: "Worst Trade",
-                value: worstTrade !== null ? `${worstTrade >= 0 ? "+" : "-"}$${Math.abs(worstTrade).toFixed(2)}` : "—",
-                color: worstTrade !== null && worstTrade < 0 ? "text-loss" : "text-text-disabled",
-              },
-            ].map(({ label, value, color }, i) => (
-              <div key={label} className={cn("flex flex-col px-4 shrink-0", i > 0 && "border-l border-border")}>
-                <span className="text-[10px] text-text-disabled uppercase tracking-wide">{label}</span>
-                <span className={cn("text-sm font-mono font-semibold", color)}>{value}</span>
+          <div className="relative mb-6">
+            <div className="flex items-center gap-2 bg-surface border border-border rounded-2xl px-5 py-3 overflow-x-auto">
+              {[
+                {
+                  label: "Net P&L",
+                  value: statsBase.length > 0 ? `${monthPnL >= 0 ? "+" : "-"}$${Math.abs(monthPnL).toFixed(2)}` : "—",
+                  color: statsBase.length > 0 ? (monthPnL >= 0 ? "text-profit" : "text-loss") : "text-text-disabled",
+                },
+                {
+                  label: "Win Rate",
+                  value: winRate !== null ? `${winRate}%` : "—",
+                  color: "text-text-primary",
+                },
+                {
+                  label: "Trades",
+                  value: statsBase.length > 0 ? String(statsBase.length) : "—",
+                  color: "text-text-primary",
+                },
+                {
+                  label: "Best Trade",
+                  value: bestTrade !== null ? `${bestTrade >= 0 ? "+" : "-"}$${Math.abs(bestTrade).toFixed(2)}` : "—",
+                  color: bestTrade !== null && bestTrade >= 0 ? "text-profit" : "text-text-disabled",
+                },
+                {
+                  label: "Worst Trade",
+                  value: worstTrade !== null ? `${worstTrade >= 0 ? "+" : "-"}$${Math.abs(worstTrade).toFixed(2)}` : "—",
+                  color: worstTrade !== null && worstTrade < 0 ? "text-loss" : "text-text-disabled",
+                },
+              ].map(({ label, value, color }, i) => (
+                <div key={label} className={cn("flex flex-col px-4 shrink-0", i > 0 && "border-l border-border")}>
+                  <span className="text-[10px] text-text-disabled uppercase tracking-wide">{label}</span>
+                  <span className={cn("text-sm font-mono font-semibold", color)}>{value}</span>
+                </div>
+              ))}
+              <button
+                onClick={() => setFilterOpen(o => !o)}
+                className={cn(
+                  "ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors shrink-0",
+                  hasActiveFilter
+                    ? "border-accent/40 bg-accent-soft text-accent"
+                    : "border-border-light text-text-secondary hover:bg-surface-2"
+                )}
+              >
+                <SlidersHorizontal className="size-3.5" />
+                Filters{hasActiveFilter && " •"}
+              </button>
+            </div>
+
+            {/* Filter dropdown */}
+            {filterOpen && (
+              <div className="absolute top-full right-0 mt-2 bg-surface border border-border rounded-2xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.4)] z-20 w-72 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-text-primary uppercase tracking-wider">Filters</p>
+                  <button onClick={() => setFilterOpen(false)} className="p-1 text-text-disabled hover:text-text-primary transition-colors">
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+
+                {/* Direction */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-text-muted uppercase tracking-wide">Direction</p>
+                  <div className="flex gap-1.5">
+                    {(["ALL","LONG","SHORT"] as const).map(v => (
+                      <button key={v} onClick={() => setFilterDir(v)}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-colors",
+                          filterDir === v
+                            ? v === "LONG" ? "bg-profit/15 border-profit/40 text-profit"
+                              : v === "SHORT" ? "bg-loss/15 border-loss/40 text-loss"
+                              : "bg-accent-soft border-accent/40 text-accent"
+                            : "bg-surface-hi border-border-light text-text-disabled hover:text-text-secondary"
+                        )}
+                      >{v}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Market */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-text-muted uppercase tracking-wide">Market</p>
+                  <div className="flex gap-1.5">
+                    {(["ALL","FOREX","METALS","INDICES"] as const).map(v => (
+                      <button key={v} onClick={() => setFilterMarket(v)}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-colors",
+                          filterMarket === v
+                            ? "bg-accent-soft border-accent/40 text-accent"
+                            : "bg-surface-hi border-border-light text-text-disabled hover:text-text-secondary"
+                        )}
+                      >{v === "ALL" ? "All" : v}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Session */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-text-muted uppercase tracking-wide">Session</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { v: "ALL", label: "All" },
+                      { v: "LONDON", label: "London" },
+                      { v: "NEW_YORK", label: "New York" },
+                      { v: "OVERLAP", label: "Overlap" },
+                      { v: "TOKYO", label: "Tokyo" },
+                    ] as const).map(({ v, label }) => (
+                      <button key={v} onClick={() => setFilterSession(v)}
+                        className={cn(
+                          "py-1.5 rounded-lg text-[11px] font-medium border transition-colors",
+                          filterSession === v
+                            ? "bg-accent-soft border-accent/40 text-accent"
+                            : "bg-surface-hi border-border-light text-text-disabled hover:text-text-secondary"
+                        )}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {hasActiveFilter && (
+                  <button
+                    onClick={() => { setFilterDir("ALL"); setFilterMarket("ALL"); setFilterSession("ALL"); }}
+                    className="w-full text-xs text-text-secondary hover:text-accent transition-colors py-1.5 border border-border-light rounded-lg"
+                  >
+                    Reset filters
+                  </button>
+                )}
               </div>
-            ))}
-            <button
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-light text-xs text-text-secondary hover:bg-surface-2 transition-colors shrink-0"
-            >
-              <SlidersHorizontal className="size-3.5" />
-              Filters
-            </button>
+            )}
           </div>
 
           {/* Day headers */}

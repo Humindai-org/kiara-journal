@@ -2,12 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Save, ExternalLink, Trash2,
-  AlertCircle, CheckCircle2, Copy, Bookmark, Upload, Mic, Play, Plus,
-  MoreHorizontal, Pencil,
+  AlertCircle, CheckCircle2, Copy, Bookmark, Upload, Mic, Square, Play, Plus,
+  MoreHorizontal, Pencil, X,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -21,6 +21,38 @@ const INSTRUMENTS = ["EURUSD","GBPUSD","USDJPY","XAUUSD","AUDUSD","USDCAD","USDC
 const SESSIONS = ["LONDON","NEW_YORK","OVERLAP","TOKYO"] as const;
 const MARKETS = ["FOREX","METALS","INDICES"] as const;
 const TIMEFRAMES = ["1m","5m","15m","1h","4h","D"] as const;
+
+const SESSION_TAGS: Record<string, string> = {
+  LONDON: "London Session",
+  NEW_YORK: "NY Session",
+  TOKYO: "Tokyo Session",
+  OVERLAP: "London/NY Overlap",
+};
+
+const PREDEFINED_TAGS = [
+  "News Fade", "Reversal", "Breakout", "Trend Follow",
+  "Daily Resistance", "Support Flip", "Order Block", "Imbalance",
+  "HTF Bias", "Best Setup", "Missed Entry", "Partial Close",
+  "FOMO Recovery", "Clean Execution",
+];
+
+const POSITIVE_ENTRY = ["Calm", "Confident"];
+const POSITIVE_EXIT = ["Calm", "Satisfied", "Relieved"];
+
+function calcControlScore(
+  followedPlan: boolean | null,
+  entryEmotion: string | null,
+  exitEmotion: string | null,
+  mistakesCount: number,
+) {
+  let s = 0;
+  if (followedPlan === true) s += 4;
+  if (entryEmotion) s += POSITIVE_ENTRY.includes(entryEmotion) ? 2 : 1;
+  if (exitEmotion) s += POSITIVE_EXIT.includes(exitEmotion) ? 2 : 1;
+  if (mistakesCount === 0) s += 2;
+  else if (mistakesCount <= 2) s += 1;
+  return Math.min(s, 10);
+}
 
 function calcPips(instrument: string, entry: number, exit: number, direction: "LONG" | "SHORT") {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
@@ -51,6 +83,9 @@ function fmtDuration(min: number | null) {
   const h = Math.floor(min / 60);
   return `${h}h ${min % 60}m`;
 }
+function fmtRecordTime(s: number) {
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
 
 type Trade = {
   id: string;
@@ -79,6 +114,8 @@ type Trade = {
   notes: string | null;
   followed_plan: boolean | null;
 };
+
+type Screenshot = { url: string; note: string };
 
 type JournalEntry = {
   id?: string;
@@ -120,6 +157,27 @@ export default function TradeDetailPage() {
   const [tab, setTab] = useState<"overview" | "reflection">("overview");
   const [timeframe, setTimeframe] = useState<string>("5m");
 
+  // Unified emotion state (source of truth → trades table)
+  const [entryEmotion, setEntryEmotion] = useState<string | null>(null);
+  const [exitEmotion, setExitEmotion] = useState<string | null>(null);
+
+  // Tags
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [showTagPicker, setShowTagPicker] = useState(false);
+
+  // Screenshots with notes
+  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [newScreenUrl, setNewScreenUrl] = useState("");
+
+  // Voice recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Editable core trade fields
   const [instrument, setInstrument] = useState("EURUSD");
   const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG");
@@ -145,7 +203,7 @@ export default function TradeDetailPage() {
 
       const { data: t } = await supabase.from("trades").select("*").eq("id", tradeId).single();
       if (t) {
-        const tr = t as Trade;
+        const tr = t as Trade & { tags?: string[] };
         setTrade(tr);
         setFollowedPlan(tr.followed_plan);
         setPlanId(tr.plan_id);
@@ -162,15 +220,26 @@ export default function TradeDetailPage() {
         setCloseTime(toLocalInput(tr.close_time));
         setSession(tr.session ?? "LONDON");
         setMarket(inferMarket(tr.instrument));
+        // Initialize unified emotions from trade
+        setEntryEmotion(tr.entry_emotion ?? null);
+        setExitEmotion(tr.exit_emotion ?? null);
+        // Initialize tags, prepend session tag if not already present
+        const rawTags = tr.tags ?? [];
+        const sTag = SESSION_TAGS[tr.session ?? ""];
+        const initialTags = sTag && !rawTags.includes(sTag) ? [sTag, ...rawTags] : rawTags;
+        setTags(initialTags);
       }
 
       const { data: je } = await supabase.from("journal_entries").select("*").eq("trade_id", tradeId).maybeSingle();
-      if (je) setEntry(je as JournalEntry);
+      if (je) {
+        setEntry(je as JournalEntry);
+        setScreenshots(((je as { screenshots?: Screenshot[] }).screenshots) ?? []);
+      }
 
       const { data: pl } = await supabase.from("plans").select("id, name, is_active").eq("user_id", uid);
       if (pl) setPlans(pl as Plan[]);
 
-      // Adjacent trades + global stats from all closed trades
+      // Adjacent trades + global stats
       const { data: all } = await supabase
         .from("trades")
         .select("id, net_pnl, return_r")
@@ -236,7 +305,11 @@ export default function TradeDetailPage() {
 
   const mistakesList = mistakesText.split("\n").map(s => s.trim()).filter(Boolean);
   const lessonsList = (entry.trade_management_notes ?? "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 4);
-  const screenshots = [entry.hft_chart_url, entry.mft_chart_url, entry.lft_chart_url].filter(Boolean) as string[];
+
+  const controlScore = useMemo(
+    () => calcControlScore(followedPlan, entryEmotion, exitEmotion, mistakesList.length),
+    [followedPlan, entryEmotion, exitEmotion, mistakesList.length],
+  );
 
   // ── Persistence ─────────────────────────────────────────────
   const saveTradeField = useCallback(async (patch: Record<string, unknown>) => {
@@ -244,7 +317,7 @@ export default function TradeDetailPage() {
     if (error) toast.error("Error saving");
   }, [db, tradeId]);
 
-  const saveEntryField = useCallback(async (patch: Partial<JournalEntry>) => {
+  const saveEntryField = useCallback(async (patch: Partial<JournalEntry> & { screenshots?: Screenshot[] }) => {
     if (!userId) return;
     if (entry.id) {
       const { error } = await db.from("journal_entries").update(patch).eq("id", entry.id);
@@ -257,6 +330,83 @@ export default function TradeDetailPage() {
       if (created) setEntry(e => ({ ...e, id: (created as { id: string }).id }));
     }
   }, [db, tradeId, userId, entry.id]);
+
+  // Unified emotion handlers — save to trades table only
+  const handleEntryEmotionChange = useCallback(async (em: string | null) => {
+    setEntryEmotion(em);
+    await saveTradeField({ entry_emotion: em });
+  }, [saveTradeField]);
+
+  const handleExitEmotionChange = useCallback(async (em: string | null) => {
+    setExitEmotion(em);
+    await saveTradeField({ exit_emotion: em });
+  }, [saveTradeField]);
+
+  // Tag handlers
+  async function addTag(tag: string) {
+    const trimmed = tag.trim();
+    if (!trimmed || tags.includes(trimmed)) { setTagInput(""); return; }
+    const newTags = [...tags, trimmed];
+    setTags(newTags);
+    setTagInput("");
+    await db.from("trades").update({ tags: newTags }).eq("id", tradeId);
+  }
+
+  async function removeTag(tag: string) {
+    const newTags = tags.filter(t => t !== tag);
+    setTags(newTags);
+    await db.from("trades").update({ tags: newTags }).eq("id", tradeId);
+  }
+
+  // Screenshot handlers
+  async function addScreenshot() {
+    const url = newScreenUrl.trim();
+    if (!url) return;
+    const newShots = [...screenshots, { url, note: "" }];
+    setScreenshots(newShots);
+    setNewScreenUrl("");
+    await saveEntryField({ screenshots: newShots });
+  }
+
+  async function updateScreenshotNote(idx: number, note: string) {
+    const newShots = screenshots.map((s, i) => i === idx ? { ...s, note } : s);
+    setScreenshots(newShots);
+    await saveEntryField({ screenshots: newShots });
+  }
+
+  async function removeScreenshot(idx: number) {
+    const newShots = screenshots.filter((_, i) => i !== idx);
+    setScreenshots(newShots);
+    await saveEntryField({ screenshots: newShots });
+  }
+
+  // Voice recording
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      chunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mr.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      toast.error("Microphone access denied — check browser permissions");
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }
 
   async function handleSaveTrade() {
     if (!trade) return;
@@ -344,8 +494,8 @@ export default function TradeDetailPage() {
 
   const openDate = new Date(trade.open_time);
   const closeDate = trade.close_time ? new Date(trade.close_time) : null;
-  const fmtTime = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  const dateLine = `${openDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · ${fmtTime(openDate)}${closeDate ? ` – ${fmtTime(closeDate)}` : ""} · ${(session ?? "").replace("_", " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())} Session`;
+  const fmtDatetime = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const dateLine = `${openDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · ${fmtDatetime(openDate)}${closeDate ? ` – ${fmtDatetime(closeDate)}` : ""} · ${(session ?? "").replace("_", " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())} Session`;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -592,24 +742,24 @@ export default function TradeDetailPage() {
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text-primary">Emotions</h3>
                     <span className="text-xs px-2.5 py-1 rounded-lg bg-surface-2 border border-border text-text-secondary">
-                      Control Score <span className="text-accent font-semibold">8/10</span>
+                      Control Score{" "}
+                      <span className={cn(
+                        "font-semibold",
+                        controlScore >= 8 ? "text-profit" : controlScore >= 5 ? "text-accent" : "text-loss"
+                      )}>
+                        {controlScore}/10
+                      </span>
                     </span>
                   </div>
                   <EmotionSelector
                     label="On Entry"
-                    selected={trade.entry_emotion}
-                    onChange={em => {
-                      setTrade(t => t ? { ...t, entry_emotion: em } : t);
-                      saveTradeField({ entry_emotion: em });
-                    }}
+                    selected={entryEmotion}
+                    onChange={handleEntryEmotionChange}
                   />
                   <EmotionSelector
                     label="On Exit"
-                    selected={trade.exit_emotion}
-                    onChange={em => {
-                      setTrade(t => t ? { ...t, exit_emotion: em } : t);
-                      saveTradeField({ exit_emotion: em });
-                    }}
+                    selected={exitEmotion}
+                    onChange={handleExitEmotionChange}
                   />
                 </div>
 
@@ -634,21 +784,25 @@ export default function TradeDetailPage() {
                           </button>
                         ))}
                       </div>
-                      <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-light text-xs text-text-secondary hover:bg-surface-2 transition-colors">
+                      <button
+                        onClick={() => router.push("/trading")}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-light text-xs text-text-secondary hover:bg-surface-2 transition-colors"
+                      >
                         Open in charts <ExternalLink className="size-3" />
                       </button>
                     </div>
                   </div>
 
-                  {entry.hft_chart_url ? (
+                  {screenshots.length > 0 ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={screenshots[0].url} alt="Trade chart" className="rounded-xl border border-border w-full object-cover max-h-96" />
+                  ) : entry.hft_chart_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={entry.hft_chart_url} alt="Trade chart" className="rounded-xl border border-border w-full object-cover max-h-96" />
                   ) : (
                     <div className="bg-surface-2 rounded-xl h-64 flex flex-col items-center justify-center gap-3">
                       <p className="text-sm text-text-disabled">No chart uploaded</p>
-                      <button className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border-light text-xs text-text-secondary hover:bg-surface-hover transition-colors">
-                        <Upload className="size-3.5" /> Upload chart
-                      </button>
+                      <p className="text-xs text-text-disabled">Add a screenshot URL in the right panel</p>
                     </div>
                   )}
                 </div>
@@ -804,18 +958,15 @@ export default function TradeDetailPage() {
                   </div>
                 </div>
 
-                {/* Emotions */}
+                {/* Emotions (unified state — same as Overview tab) */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="card p-5">
                     <h4 className="text-sm font-medium text-text-primary mb-1">Entry Emotion</h4>
                     <p className="text-xs text-text-secondary mb-3">How did you feel when entering?</p>
                     <EmotionSelector
                       label="On Entry"
-                      selected={entry.entry_emotion}
-                      onChange={em => {
-                        setEntry(en => ({ ...en, entry_emotion: em }));
-                        saveEntryField({ entry_emotion: em });
-                      }}
+                      selected={entryEmotion}
+                      onChange={handleEntryEmotionChange}
                     />
                   </div>
                   <div className="card p-5">
@@ -823,11 +974,8 @@ export default function TradeDetailPage() {
                     <p className="text-xs text-text-secondary mb-3">How did you feel when exiting?</p>
                     <EmotionSelector
                       label="On Exit"
-                      selected={entry.exit_emotion}
-                      onChange={em => {
-                        setEntry(en => ({ ...en, exit_emotion: em }));
-                        saveEntryField({ exit_emotion: em });
-                      }}
+                      selected={exitEmotion}
+                      onChange={handleExitEmotionChange}
                     />
                   </div>
                 </div>
@@ -850,30 +998,64 @@ export default function TradeDetailPage() {
                   />
                 </div>
 
-                {/* Voice Reflection — decorative UI */}
+                {/* Voice Reflection */}
                 <div className="card p-5">
                   <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2.5 min-w-[200px]">
-                      <Mic className="size-4 text-text-secondary" />
+                      <Mic className={cn("size-4", isRecording ? "text-loss" : "text-text-secondary")} />
                       <div>
                         <h4 className="text-sm font-medium text-text-primary">Voice Reflection</h4>
                         <p className="text-xs text-text-secondary">Record a quick voice note about this trade</p>
                       </div>
                     </div>
                     <div className="flex-1 flex items-center gap-3">
-                      <button className="size-9 rounded-full bg-accent-soft border border-accent/30 flex items-center justify-center text-accent hover:bg-accent-glow transition-colors shrink-0">
-                        <Play className="size-3.5 ml-0.5" />
-                      </button>
-                      <svg className="flex-1 h-8 text-text-disabled" viewBox="0 0 200 32" preserveAspectRatio="none">
-                        {Array.from({ length: 50 }).map((_, i) => {
-                          const h = 4 + ((i * 7919) % 20);
-                          return <rect key={i} x={i * 4} y={16 - h / 2} width="2" height={h} rx="1" fill="currentColor" />;
-                        })}
-                      </svg>
-                      <span className="text-xs font-mono text-text-secondary shrink-0">00:45</span>
-                      <button className="p-1.5 rounded-lg text-text-disabled hover:text-loss hover:bg-loss/10 transition-colors shrink-0">
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      {!isRecording && !audioUrl && (
+                        <button
+                          onClick={startRecording}
+                          className="size-9 rounded-full bg-accent-soft border border-accent/30 flex items-center justify-center text-accent hover:bg-accent-glow transition-colors shrink-0"
+                        >
+                          <Mic className="size-3.5" />
+                        </button>
+                      )}
+                      {isRecording && (
+                        <>
+                          <button
+                            onClick={stopRecording}
+                            className="size-9 rounded-full bg-loss/15 border border-loss/30 flex items-center justify-center text-loss hover:bg-loss/20 transition-colors shrink-0"
+                          >
+                            <Square className="size-3.5" />
+                          </button>
+                          <div className="flex-1 flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-loss animate-pulse shrink-0" />
+                            <span className="text-xs text-loss font-mono">{fmtRecordTime(recordingTime)}</span>
+                            <span className="text-xs text-text-disabled">Recording…</span>
+                          </div>
+                        </>
+                      )}
+                      {!isRecording && audioUrl && (
+                        <>
+                          <button
+                            onClick={() => { const a = document.createElement("audio"); a.src = audioUrl; a.play(); }}
+                            className="size-9 rounded-full bg-accent-soft border border-accent/30 flex items-center justify-center text-accent hover:bg-accent-glow transition-colors shrink-0"
+                          >
+                            <Play className="size-3.5 ml-0.5" />
+                          </button>
+                          <audio controls src={audioUrl} className="flex-1 h-8 min-w-0" style={{ colorScheme: "dark" }} />
+                          <button
+                            onClick={() => { setAudioUrl(null); setRecordingTime(0); }}
+                            className="p-1.5 rounded-lg text-text-disabled hover:text-loss hover:bg-loss/10 transition-colors shrink-0"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                          <button
+                            onClick={startRecording}
+                            className="p-1.5 rounded-lg text-text-disabled hover:text-accent hover:bg-accent-soft transition-colors shrink-0"
+                            title="Record again"
+                          >
+                            <Mic className="size-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -924,45 +1106,118 @@ export default function TradeDetailPage() {
               )}
             </div>
 
-            {/* Screenshots */}
+            {/* Screenshots with notes */}
             <div className="card p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium text-text-primary">Screenshots</h4>
-                <button className="text-xs text-accent hover:text-action-hover transition-colors">View all</button>
-              </div>
-              {screenshots.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {screenshots.map((url, i) => (
-                    <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+              <h4 className="text-sm font-medium text-text-primary">Screenshots</h4>
+              {screenshots.map((shot, idx) => (
+                <div key={idx} className="space-y-1.5">
+                  <div className="relative group">
+                    <a href={shot.url} target="_blank" rel="noopener noreferrer">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt={`Screenshot ${i + 1}`} className="rounded-lg object-cover aspect-video border border-border hover:border-accent/50 transition-colors" />
+                      <img
+                        src={shot.url}
+                        alt={`Screenshot ${idx + 1}`}
+                        className="rounded-lg object-cover w-full aspect-video border border-border hover:border-accent/50 transition-colors"
+                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
                     </a>
-                  ))}
+                    <button
+                      onClick={() => removeScreenshot(idx)}
+                      className="absolute top-1.5 right-1.5 size-6 rounded-full bg-bg/80 backdrop-blur-sm flex items-center justify-center text-text-disabled opacity-0 group-hover:opacity-100 hover:text-loss transition-all"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={shot.note}
+                    onChange={e => {
+                      const newShots = screenshots.map((s, i) => i === idx ? { ...s, note: e.target.value } : s);
+                      setScreenshots(newShots);
+                    }}
+                    onBlur={() => updateScreenshotNote(idx, shot.note)}
+                    placeholder="Add a note…"
+                    className="w-full bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                  />
                 </div>
-              )}
-              <button className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-border-light text-xs text-text-disabled hover:text-text-secondary hover:border-border-light transition-colors">
-                <Plus className="size-3.5" /> Add screenshot
-              </button>
+              ))}
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={newScreenUrl}
+                  onChange={e => setNewScreenUrl(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addScreenshot()}
+                  placeholder="Paste image URL…"
+                  className="flex-1 bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                />
+                <button
+                  onClick={addScreenshot}
+                  disabled={!newScreenUrl.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-accent-soft border border-accent/30 text-accent text-xs hover:bg-accent-glow transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Tags */}
             <div className="card p-4 space-y-3">
               <h4 className="text-sm font-medium text-text-primary">Tags</h4>
               <div className="flex flex-wrap gap-1.5">
-                {session && (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-accent-glow text-accent border border-accent/20">
-                    {session.replace("_", " ")} Session
-                  </span>
-                )}
-                {mistakesList.slice(0, 3).map((m, i) => (
-                  <span key={i} className="text-[10px] px-2 py-1 rounded-full bg-surface-hi text-text-secondary border border-border-light">
-                    {m.length > 24 ? m.slice(0, 24) + "…" : m}
+                {tags.map(tag => (
+                  <span
+                    key={tag}
+                    className="group flex items-center gap-1 text-[10px] px-2 py-1 rounded-full bg-accent-glow text-accent border border-accent/20"
+                  >
+                    {tag}
+                    <button
+                      onClick={() => removeTag(tag)}
+                      className="opacity-0 group-hover:opacity-100 hover:text-loss transition-all"
+                    >
+                      <X className="size-2.5" />
+                    </button>
                   </span>
                 ))}
-                <button className="flex items-center gap-0.5 text-[10px] px-2 py-1 rounded-full border border-dashed border-border-light text-text-disabled hover:text-text-secondary transition-colors">
+                <button
+                  onClick={() => setShowTagPicker(p => !p)}
+                  className="flex items-center gap-0.5 text-[10px] px-2 py-1 rounded-full border border-dashed border-border-light text-text-disabled hover:text-text-secondary transition-colors"
+                >
                   <Plus className="size-2.5" /> Add tag
                 </button>
               </div>
+
+              {showTagPicker && (
+                <div className="space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { addTag(tagInput); } if (e.key === "Escape") setShowTagPicker(false); }}
+                      placeholder="Custom tag…"
+                      autoFocus
+                      className="flex-1 bg-surface-hi border border-border-light rounded-lg px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                    />
+                    <button
+                      onClick={() => addTag(tagInput)}
+                      className="px-2.5 py-1.5 rounded-lg bg-accent-soft border border-accent/30 text-accent text-xs hover:bg-accent-glow transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {PREDEFINED_TAGS.filter(t => !tags.includes(t)).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => addTag(t)}
+                        className="text-[10px] px-2 py-0.5 rounded-full border border-border-light bg-surface-hi text-text-secondary hover:border-accent/40 hover:text-accent transition-colors"
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Quick Actions */}
