@@ -51,8 +51,12 @@ export default function OrderForm({
   // Guardian modal flow
   const [guardianState, setGuardianState] = useState<"idle" | "checking" | "modal" | "submitting" | "done">("idle");
   const [guardianResult, setGuardianResult] = useState<GuardianResult | null>(null);
-  const [confirmedWarnings, setConfirmedWarnings] = useState<Set<string>>(new Set());
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Unused but kept to avoid breaking the TradeCounter prop contract
+  void tradesUsed;
+  void maxTrades;
 
   useEffect(() => {
     onSymbolChange?.(instrument);
@@ -73,6 +77,10 @@ export default function OrderForm({
       const { lots, riskUsd, slPips } = calcLots(instrument, e, s, grade);
       const rr = t > 0 ? calcRR(e, s, t) : 0;
       setCalc({ lots, riskUsd, slPips, rr });
+    } else if (s > 0 && grade !== "C") {
+      // SL without entry — show risk only
+      const { lots, riskUsd, slPips } = calcLots(instrument, s, s, grade);
+      setCalc({ lots, riskUsd, slPips, rr: 0 });
     } else {
       setCalc(null);
     }
@@ -83,7 +91,7 @@ export default function OrderForm({
     if (guardianState !== "idle" && guardianState !== "done") {
       setGuardianState("idle");
       setGuardianResult(null);
-      setConfirmedWarnings(new Set());
+      setOverrideConfirmed(false);
       setSubmitError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,7 +111,7 @@ export default function OrderForm({
     const slValue = parseFloat(sl);
     const tpValue = parseFloat(tp) || 0;
 
-    if (orderType !== "MARKET" && !entryValue) {
+    if ((orderType === "LIMIT" || orderType === "STOP") && !entryValue) {
       setSubmitError("Entry price required for Limit/Stop orders.");
       return;
     }
@@ -119,9 +127,9 @@ export default function OrderForm({
           account_id: accountId,
           symbol: instrument,
           direction,
-          entry: entryValue || slValue,
+          entry: entryValue || 0,  // send 0 for MARKET; API detects no real entry
           sl: slValue,
-          tp: tpValue || undefined,
+          tp: tpValue > 0 ? tpValue : undefined,
           grade,
         }),
       });
@@ -135,7 +143,7 @@ export default function OrderForm({
       }
 
       setGuardianResult(data);
-      setGuardianState("modal");  // open the modal
+      setGuardianState("modal");
     } catch {
       setGuardianState("idle");
       setSubmitError("Connection error — Risk Guardian unavailable.");
@@ -165,7 +173,7 @@ export default function OrderForm({
           sl: slValue,
           tp: tpValue,
           grade,
-          confirmed_warnings: Array.from(confirmedWarnings),
+          confirmed_warnings: guardianResult.discipline_warnings.map(w => w.type),
         }),
       });
 
@@ -183,12 +191,12 @@ export default function OrderForm({
       setGuardianState("modal");
       setSubmitError("Connection error. Try again.");
     }
-  }, [guardianResult, accountId, confirmedWarnings, entry, sl, tp, instrument, direction, orderType, grade, onTradeLogged]);
+  }, [guardianResult, accountId, overrideConfirmed, entry, sl, tp, instrument, direction, orderType, grade, onTradeLogged]);
 
   const handleStop = useCallback(() => {
     setGuardianState("idle");
     setGuardianResult(null);
-    setConfirmedWarnings(new Set());
+    setOverrideConfirmed(false);
     setSubmitError(null);
   }, []);
 
@@ -198,7 +206,7 @@ export default function OrderForm({
     setTp("");
     setGuardianState("idle");
     setGuardianResult(null);
-    setConfirmedWarnings(new Set());
+    setOverrideConfirmed(false);
     setSubmitError(null);
   };
 
@@ -209,19 +217,15 @@ export default function OrderForm({
 
   return (
     <>
-      {/* Risk Guardian Modal — rendered as portal overlay */}
+      {/* Risk Guardian Modal */}
       {(guardianState === "modal" || guardianState === "submitting") && guardianResult && (
         <RiskGuardianModal
           result={guardianResult}
           instrument={instrument}
           direction={direction}
-          confirmedWarnings={confirmedWarnings}
-          onToggleWarning={(type) => {
-            const next = new Set(confirmedWarnings);
-            if (next.has(type)) next.delete(type);
-            else next.add(type);
-            setConfirmedWarnings(next);
-          }}
+          grade={grade}
+          overrideConfirmed={overrideConfirmed}
+          onToggleOverride={() => setOverrideConfirmed(prev => !prev)}
           onStop={handleStop}
           onOverride={handleOverride}
           isSubmitting={guardianState === "submitting"}
@@ -235,7 +239,7 @@ export default function OrderForm({
             <Lock className="size-6 text-loss" />
             <p className="text-sm font-medium text-loss">{newsBlock.eventName}</p>
             <p className="text-xs text-text-secondary">
-              Trading bloqueado · {newsBlock.minutesLeft} min
+              Trading blocked · {newsBlock.minutesLeft} min
             </p>
           </div>
         )}
@@ -261,7 +265,7 @@ export default function OrderForm({
           </div>
         )}
 
-        {/* Main form — hidden in done state */}
+        {/* Main form */}
         {guardianState !== "done" && (
           <>
             {/* Instrument + Grade */}
@@ -340,17 +344,18 @@ export default function OrderForm({
 
             {/* Price fields */}
             <div className="space-y-2">
-              {orderType !== "MARKET" && (
-                <div>
-                  <label className="text-xs text-text-secondary mb-1 block">Entry Price</label>
-                  <input
-                    type="number" step="0.00001" value={entry}
-                    onChange={(e) => setEntry(e.target.value)}
-                    placeholder="0.00000"
-                    className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
-                  />
-                </div>
-              )}
+              {/* Entry price — always shown, labeled differently for MARKET */}
+              <div>
+                <label className="text-xs text-text-secondary mb-1 block">
+                  {orderType === "MARKET" ? "Entry / Current price (for R:R)" : "Entry Price"}
+                </label>
+                <input
+                  type="number" step="0.00001" value={entry}
+                  onChange={(e) => setEntry(e.target.value)}
+                  placeholder="0.00000"
+                  className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                />
+              </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -384,7 +389,7 @@ export default function OrderForm({
                     : "border-loss/30 bg-loss/5 text-loss"
                 )}>
                   <span className="text-text-secondary font-sans font-normal">R:R</span>
-                  <span>1:{inlineRR}R {inlineRR < 2 && "⚠ mín 1:2"}</span>
+                  <span>1:{inlineRR}R {inlineRR < 2 && "⚠ min 1:2"}</span>
                 </div>
               )}
             </div>

@@ -22,7 +22,7 @@ interface RiskGuardianResponse {
   discipline_warnings: DisciplineWarning[];
   debug: {
     balance: number;
-    daily_dd_remaining: number;
+    daily_cap_remaining: number;
     total_dd_remaining: number;
     risk_usd: number;
     rr: number;
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: account, error: accErr } = await (supabase as any)
     .from("accounts")
-    .select("id, current_balance, initial_balance, daily_dd_floor, total_dd_floor, personal_daily_stop_usd")
+    .select("id, current_balance, initial_balance, total_dd_floor, personal_daily_stop_usd")
     .eq("id", account_id)
     .eq("user_id", user.id)
     .single();
@@ -76,12 +76,7 @@ export async function POST(req: NextRequest) {
 
   const balance: number = account.current_balance ?? 0;
   const personalDailyStop: number = account.personal_daily_stop_usd ?? 300;
-
-  // DD floors: fall back to safe defaults if not yet seeded
-  const dailyDdFloor: number = account.daily_dd_floor ?? balance * 0.997;
   const totalDdFloor: number = account.total_dd_floor ?? (account.initial_balance ?? balance) * 0.90;
-
-  const dailyDdRemaining = Math.max(0, balance - dailyDdFloor);
   const totalDdRemaining = Math.max(0, balance - totalDdFloor);
 
   // ── Load today's trades ───────────────────────────────────────────────────
@@ -103,6 +98,10 @@ export async function POST(req: NextRequest) {
   const tradeCountToday = trades.length;
 
   const realizedPnlToday = closedToday.reduce((sum, t) => sum + (t.net_pnl ?? 0), 0);
+  const realizedLossToday = Math.abs(Math.min(0, realizedPnlToday));
+
+  // How much of the personal daily cap is left
+  const dailyCapRemaining = Math.max(0, personalDailyStop - realizedLossToday);
 
   // Consecutive losses: walk backward through closed trades
   let consecutiveLosses = 0;
@@ -114,62 +113,59 @@ export async function POST(req: NextRequest) {
   // ── Calculate trade risk ──────────────────────────────────────────────────
   const { riskUsd } = calcLots(symbol, entry || sl, sl, grade);
 
-  // Detect if we have a real entry price (for MARKET orders entry === sl)
+  // Max risk per trade = personal daily stop (e.g. $300 for TTP)
+  const maxAllowedRisk = personalDailyStop;
+
+  // Detect real entry price (MARKET orders send entry=sl as fallback)
   const hasRealEntry = entry > 0 && Math.abs(entry - sl) > 0.000001;
   const hasTp = tp != null && tp > 0 && Math.abs(tp - sl) > 0.000001;
   const rr = (hasRealEntry && hasTp) ? calcRR(entry, sl, tp!) : 0;
 
-  // Max risk = 0.3% of current balance (dynamic) but also capped by personal stop
-  const maxRiskByBalance = Math.round(balance * 0.003 * 100) / 100;
-  const maxAllowedRisk = Math.min(personalDailyStop, maxRiskByBalance);
-
-  // ── Run the 5 Risk Guardian checks ───────────────────────────────────────
+  // ── Run Risk Guardian checks ──────────────────────────────────────────────
   const checks: Check[] = [];
 
-  // Check A — Trade risk limit
+  // Check A — Trade risk
   if (riskUsd > maxAllowedRisk) {
     checks.push({ id: "A", label: "Trade risk", result: "STOP",
-      message: `$${riskUsd} exceeds max $${maxAllowedRisk.toFixed(0)} (0.3% of $${balance.toLocaleString("en-US", { maximumFractionDigits: 0 })})` });
+      message: `$${riskUsd} exceeds your max of $${maxAllowedRisk} per trade` });
   } else if (riskUsd > maxAllowedRisk * 0.8) {
     checks.push({ id: "A", label: "Trade risk", result: "CAUTION",
-      message: `$${riskUsd} is ${Math.round(riskUsd / maxAllowedRisk * 100)}% of max $${maxAllowedRisk.toFixed(0)}` });
+      message: `$${riskUsd} is ${Math.round(riskUsd / maxAllowedRisk * 100)}% of your $${maxAllowedRisk} limit` });
   } else {
     checks.push({ id: "A", label: "Trade risk", result: "PASS",
-      message: `$${riskUsd} of $${maxAllowedRisk.toFixed(0)} allowed` });
+      message: `$${riskUsd} of $${maxAllowedRisk} allowed` });
   }
 
-  // Check B — Daily loss limit
-  const realizedDailyLoss = Math.abs(Math.min(0, realizedPnlToday));
-  const dailyLossIfHit = realizedDailyLoss + riskUsd;
-
+  // Check B — Daily stop cap (personal)
+  const dailyLossIfHit = realizedLossToday + riskUsd;
   if (dailyLossIfHit > personalDailyStop) {
-    checks.push({ id: "B", label: "Daily loss limit", result: "STOP",
-      message: `Today's P&L + this trade = $${dailyLossIfHit.toFixed(0)}. Daily stop: $${personalDailyStop}` });
-  } else if (dailyDdRemaining - riskUsd < 90) {
-    checks.push({ id: "B", label: "Daily loss limit", result: "CAUTION",
-      message: `$${(dailyDdRemaining - riskUsd).toFixed(0)} remaining after this trade (<$90 buffer)` });
+    checks.push({ id: "B", label: "Daily stop", result: "STOP",
+      message: `Loss today ($${realizedLossToday.toFixed(0)}) + this trade ($${riskUsd}) = $${dailyLossIfHit.toFixed(0)} — cap is $${personalDailyStop}` });
+  } else if (dailyCapRemaining - riskUsd < personalDailyStop * 0.2) {
+    checks.push({ id: "B", label: "Daily stop", result: "CAUTION",
+      message: `$${(dailyCapRemaining - riskUsd).toFixed(0)} left of daily cap after this trade (<20% buffer)` });
   } else {
-    checks.push({ id: "B", label: "Daily loss limit", result: "PASS",
-      message: `$${dailyDdRemaining.toFixed(0)} remaining today` });
+    checks.push({ id: "B", label: "Daily stop", result: "PASS",
+      message: `$${dailyCapRemaining.toFixed(0)} of $${personalDailyStop} daily cap remaining` });
   }
 
-  // Check C — Firm account buffer (total drawdown)
+  // Check C — Firm account total DD floor
   const afterTotalRisk = totalDdRemaining - riskUsd;
   if (afterTotalRisk < 0) {
-    checks.push({ id: "C", label: "Firm DD remaining", result: "STOP",
-      message: `This trade would breach the firm's total DD floor ($${totalDdFloor.toLocaleString("en-US", { maximumFractionDigits: 0 })})` });
+    checks.push({ id: "C", label: "Firm DD limit", result: "STOP",
+      message: `This trade would breach the firm's floor ($${totalDdFloor.toLocaleString("en-US", { maximumFractionDigits: 0 })})` });
   } else if (totalDdRemaining < 2000) {
-    checks.push({ id: "C", label: "Firm DD remaining", result: "CAUTION",
-      message: `$${totalDdRemaining.toFixed(0)} remaining on firm account — critical zone (<$2,000)` });
+    checks.push({ id: "C", label: "Firm DD limit", result: "CAUTION",
+      message: `$${totalDdRemaining.toFixed(0)} left on firm account — critical zone (<$2,000)` });
   } else {
-    checks.push({ id: "C", label: "Firm DD remaining", result: "PASS",
-      message: `$${totalDdRemaining.toFixed(0)} total buffer remaining` });
+    checks.push({ id: "C", label: "Firm DD limit", result: "PASS",
+      message: `$${totalDdRemaining.toFixed(0)} buffer above firm's floor ($${totalDdFloor.toLocaleString("en-US", { maximumFractionDigits: 0 })})` });
   }
 
   // Check D — R:R ratio
   if (!hasRealEntry) {
     checks.push({ id: "D", label: "R:R ratio", result: "CAUTION",
-      message: "Market order — set entry price to calculate R:R" });
+      message: "Enter approx. entry price to calculate R:R" });
   } else if (!hasTp) {
     checks.push({ id: "D", label: "R:R ratio", result: "CAUTION",
       message: "No TP set — R:R not calculated" });
@@ -184,19 +180,7 @@ export async function POST(req: NextRequest) {
       message: `R:R 1:${rr}` });
   }
 
-  // Check E — Simultaneous positions
-  if (openTrades.length >= 2) {
-    checks.push({ id: "E", label: "Open positions", result: "STOP",
-      message: `${openTrades.length} positions already open — max 1 simultaneous` });
-  } else if (openTrades.length === 1) {
-    checks.push({ id: "E", label: "Open positions", result: "CAUTION",
-      message: "1 position already open — this would be 2 simultaneous" });
-  } else {
-    checks.push({ id: "E", label: "Open positions", result: "PASS",
-      message: "No open positions" });
-  }
-
-  // ── Discipline warnings (soft — require explicit user confirmation) ────────
+  // ── Discipline warnings ───────────────────────────────────────────────────
   const disciplineWarnings: DisciplineWarning[] = [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -227,7 +211,7 @@ export async function POST(req: NextRequest) {
   if (dayOfWeek === 5 && grade !== "A+") {
     disciplineWarnings.push({
       type: "FRIDAY_GRADE",
-      message: `Friday rule: only A+ setups. This setup is grade ${grade}.`,
+      message: `It's Friday — your rules allow only A+ setups. This setup is grade ${grade}.`,
     });
   }
 
@@ -235,7 +219,7 @@ export async function POST(req: NextRequest) {
   if (totalDdUsed > 5000 && grade === "B") {
     disciplineWarnings.push({
       type: "PROTECTION_MODE",
-      message: `Protection mode active (total DD used: $${totalDdUsed.toFixed(0)}). Only A/A+ when more than $5,000 DD is consumed.`,
+      message: `Protection mode: only A/A+ setups when more than $5,000 of total DD is consumed ($${totalDdUsed.toFixed(0)} used).`,
     });
   }
 
@@ -255,7 +239,7 @@ export async function POST(req: NextRequest) {
     discipline_warnings: disciplineWarnings,
     debug: {
       balance,
-      daily_dd_remaining: dailyDdRemaining,
+      daily_cap_remaining: dailyCapRemaining,
       total_dd_remaining: totalDdRemaining,
       risk_usd: riskUsd,
       rr,
