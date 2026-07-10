@@ -1,6 +1,6 @@
 "use client";
 
-import { XCircle, ShieldAlert, CheckCircle, X, TrendingDown } from "lucide-react";
+import { XCircle, ShieldAlert, CheckCircle, X, TrendingDown, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 type CheckResult = "PASS" | "CAUTION" | "STOP";
@@ -77,9 +77,9 @@ export default function RiskGuardianModal({
   isSubmitting = false,
 }: RiskGuardianModalProps) {
   const { verdict, checks, discipline_warnings, debug } = result;
-  const hasViolations = verdict === "STOP" || discipline_warnings.length > 0;
+  const hasStops = checks.some(c => c.result === "STOP");
   const allWarningsConfirmed = discipline_warnings.every(w => confirmedWarnings.has(w.type));
-  const canOverride = verdict !== "STOP" && allWarningsConfirmed;
+  const canProceed = allWarningsConfirmed;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg/80 backdrop-blur-sm">
@@ -101,9 +101,7 @@ export default function RiskGuardianModal({
             }
             <div>
               <p className="text-sm font-semibold text-text-primary">Risk Guardian</p>
-              <p className="text-xs text-text-secondary">
-                {instrument} {direction} · Grado calculado
-              </p>
+              <p className="text-xs text-text-secondary">{instrument} {direction}</p>
             </div>
           </div>
           <button
@@ -117,18 +115,18 @@ export default function RiskGuardianModal({
         {/* Daily summary strip */}
         <div className="grid grid-cols-3 divide-x divide-border border-b border-border bg-surface-2">
           <div className="px-3 py-2 text-center">
-            <p className="text-[11px] text-text-secondary">Trades hoy</p>
+            <p className="text-[11px] text-text-secondary">Trades today</p>
             <p className="text-sm font-mono font-medium text-text-primary">{debug.trades_today}</p>
           </div>
           <div className="px-3 py-2 text-center">
-            <p className="text-[11px] text-text-secondary">P&L hoy</p>
+            <p className="text-[11px] text-text-secondary">Daily remaining</p>
             <p className={cn(
               "text-sm font-mono font-medium",
-              (debug.daily_dd_remaining - debug.risk_usd) < 0 ? "text-loss" : "text-profit"
+              debug.daily_dd_remaining <= 0 ? "text-loss"
+              : debug.daily_dd_remaining < 90 ? "text-warning"
+              : "text-profit"
             )}>
-              {debug.daily_dd_remaining > 0
-                ? `$${debug.daily_dd_remaining.toFixed(0)} restante`
-                : "Sin margen"}
+              ${debug.daily_dd_remaining.toFixed(0)}
             </p>
           </div>
           <div className="px-3 py-2 text-center">
@@ -142,11 +140,16 @@ export default function RiskGuardianModal({
           </div>
         </div>
 
-        {/* Risk checks */}
-        <div className="px-4 py-3">
-          <p className="text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-2">
-            Evaluación de riesgo
+        {/* Advisory header */}
+        <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+          <AlertTriangle className="size-3.5 text-text-secondary shrink-0" />
+          <p className="text-[11px] text-text-secondary">
+            Before entering this trade, review these points:
           </p>
+        </div>
+
+        {/* Risk checks */}
+        <div className="px-4 pb-3">
           <div>
             {checks.map(check => (
               <CheckRow key={check.id} check={check} />
@@ -154,19 +157,16 @@ export default function RiskGuardianModal({
           </div>
         </div>
 
-        {/* Discipline warnings — only shown if there are any and verdict isn't STOP */}
-        {verdict !== "STOP" && discipline_warnings.length > 0 && (
+        {/* Discipline warnings */}
+        {discipline_warnings.length > 0 && (
           <div className="px-4 pb-3 border-t border-border/50">
             <p className="text-[11px] font-medium text-warning uppercase tracking-wider mt-3 mb-2 flex items-center gap-1.5">
               <TrendingDown className="size-3.5" />
-              Reglas de disciplina
+              Discipline rules
             </p>
             <div className="space-y-2.5">
               {discipline_warnings.map(warning => (
-                <label
-                  key={warning.type}
-                  className="flex items-start gap-2.5 cursor-pointer group"
-                >
+                <label key={warning.type} className="flex items-start gap-2.5 cursor-pointer group">
                   <input
                     type="checkbox"
                     checked={confirmedWarnings.has(warning.type)}
@@ -178,21 +178,12 @@ export default function RiskGuardianModal({
                   </span>
                 </label>
               ))}
+              {!allWarningsConfirmed && (
+                <p className="text-[11px] text-text-secondary">
+                  Check all boxes above to proceed.
+                </p>
+              )}
             </div>
-            {!allWarningsConfirmed && (
-              <p className="text-[11px] text-text-secondary mt-2">
-                Marca todos los avisos para poder hacer override.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* STOP explanation */}
-        {verdict === "STOP" && (
-          <div className="mx-4 mb-3 px-3 py-2 rounded-lg bg-loss/10 border border-loss/20">
-            <p className="text-xs text-loss">
-              No se puede proceder. Corrige los puntos marcados con ❌ antes de operar.
-            </p>
           </div>
         )}
 
@@ -202,28 +193,29 @@ export default function RiskGuardianModal({
             onClick={onStop}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
           >
-            {verdict === "STOP" ? "Entendido" : "Stop Trading"}
+            Cancel
           </button>
 
-          {verdict !== "STOP" && (
-            <button
-              onClick={onOverride}
-              disabled={!canOverride || isSubmitting}
-              className={cn(
-                "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                verdict === "GO"
-                  ? direction === "LONG"
-                    ? "bg-profit text-bg hover:bg-profit/90"
-                    : "bg-loss text-bg hover:bg-loss/90"
-                  : "bg-warning text-bg hover:bg-warning/90",
-                "disabled:opacity-40 disabled:cursor-not-allowed"
-              )}
-            >
-              {hasViolations && discipline_warnings.length > 0
-                ? "Override → Registrar violación"
-                : "Confirmar → Ejecutar en MT5"}
-            </button>
-          )}
+          <button
+            onClick={onOverride}
+            disabled={!canProceed || isSubmitting}
+            className={cn(
+              "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              hasStops
+                ? "bg-surface-2 border border-loss/40 text-loss/70 hover:bg-loss/10 hover:text-loss hover:border-loss disabled:opacity-40"
+                : verdict === "CAUTION"
+                ? "bg-warning text-bg hover:bg-warning/90 disabled:opacity-40"
+                : direction === "LONG"
+                ? "bg-profit text-bg hover:bg-profit/90 disabled:opacity-40"
+                : "bg-loss text-bg hover:bg-loss/90 disabled:opacity-40",
+              "disabled:cursor-not-allowed"
+            )}
+          >
+            {isSubmitting ? "Saving..."
+              : hasStops ? "Enter anyway"
+              : discipline_warnings.length > 0 ? "Override & enter"
+              : "Confirm → Execute in MT5"}
+          </button>
         </div>
       </div>
     </div>

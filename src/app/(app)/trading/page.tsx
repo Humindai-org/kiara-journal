@@ -35,7 +35,7 @@ function ExposureBanner({ pnl, openCount, personalStop, level }: {
       <div className="flex items-center gap-2 px-4 py-2.5 bg-loss/15 border-b border-loss/30 animate-pulse">
         <TrendingDown className="size-4 text-loss shrink-0" />
         <span className="text-xs font-medium text-loss">
-          STOP DIARIO ALCANZADO — ${absLoss.toFixed(2)} en pérdidas (límite: ${personalStop}). Cierra posiciones.
+          DAILY STOP HIT — ${absLoss.toFixed(2)} in losses (limit: ${personalStop}). Close all positions.
         </span>
       </div>
     );
@@ -50,8 +50,8 @@ function ExposureBanner({ pnl, openCount, personalStop, level }: {
     )}>
       <AlertTriangle className="size-3.5 shrink-0" />
       <span>
-        {openCount > 0 ? `${openCount} posición${openCount > 1 ? "es" : ""} abierta${openCount > 1 ? "s" : ""} · ` : ""}
-        {pct}% del stop diario usado (${absLoss.toFixed(2)} / ${personalStop})
+        {openCount > 0 ? `${openCount} open position${openCount > 1 ? "s" : ""} · ` : ""}
+        {pct}% of daily stop used (${absLoss.toFixed(2)} / ${personalStop})
       </span>
     </div>
   );
@@ -236,7 +236,7 @@ export default function TradingPage() {
                   ? "border-loss/30 bg-loss/10 text-loss"
                   : "border-warning/30 bg-warning/10 text-warning"
               )}>
-                <span>{openCount} posición{openCount > 1 ? "es" : ""} abierta{openCount > 1 ? "s" : ""}</span>
+                <span>{openCount} open position{openCount > 1 ? "s" : ""}</span>
                 <span className="font-mono font-medium">
                   {todayPnL >= 0 ? `+$${todayPnL.toFixed(2)}` : `-$${Math.abs(todayPnL).toFixed(2)}`}
                 </span>

@@ -91,11 +91,11 @@ export default function OrderForm({
 
   const runRiskCheck = useCallback(async () => {
     if (!accountId) {
-      setSubmitError("No hay cuenta seleccionada. Configura una cuenta en Ajustes.");
+      setSubmitError("No account selected. Configure an account in Settings.");
       return;
     }
     if (!sl) {
-      setSubmitError("Stop Loss es obligatorio.");
+      setSubmitError("Stop Loss is required.");
       return;
     }
 
@@ -104,7 +104,7 @@ export default function OrderForm({
     const tpValue = parseFloat(tp) || 0;
 
     if (orderType !== "MARKET" && !entryValue) {
-      setSubmitError("Entry price requerido para órdenes Limit/Stop.");
+      setSubmitError("Entry price required for Limit/Stop orders.");
       return;
     }
 
@@ -130,7 +130,7 @@ export default function OrderForm({
 
       if (!res.ok) {
         setGuardianState("idle");
-        setSubmitError(data.error ?? "Error al validar el trade.");
+        setSubmitError(data.error ?? "Error validating trade.");
         return;
       }
 
@@ -138,7 +138,7 @@ export default function OrderForm({
       setGuardianState("modal");  // open the modal
     } catch {
       setGuardianState("idle");
-      setSubmitError("Error de conexión al Risk Guardian.");
+      setSubmitError("Connection error — Risk Guardian unavailable.");
     }
   }, [accountId, instrument, direction, entry, sl, tp, grade, orderType]);
 
@@ -173,7 +173,7 @@ export default function OrderForm({
 
       if (!res.ok) {
         setGuardianState("modal");
-        setSubmitError(data.error ?? "Error al registrar el trade.");
+        setSubmitError(data.error ?? "Error logging trade.");
         return;
       }
 
@@ -181,7 +181,7 @@ export default function OrderForm({
       onTradeLogged?.();
     } catch {
       setGuardianState("modal");
-      setSubmitError("Error de conexión. Intenta de nuevo.");
+      setSubmitError("Connection error. Try again.");
     }
   }, [guardianResult, accountId, confirmedWarnings, entry, sl, tp, instrument, direction, orderType, grade, onTradeLogged]);
 
@@ -245,18 +245,18 @@ export default function OrderForm({
           <div className="flex flex-col items-center gap-3 py-4 px-2">
             <CheckCircle className="size-8 text-profit" />
             <p className="text-sm font-medium text-text-primary text-center">
-              Trade validado y registrado
+              Trade logged
             </p>
             <p className="text-xs text-text-secondary text-center">
-              Abre la orden ahora en MT5.
-              <br />El webhook lo marcará como abierto al detectarlo.
+              Open the order in MT5 now.
+              <br />The webhook will mark it as open once the EA fires.
             </p>
             <button
               onClick={resetForm}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-2 border border-border text-xs text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
             >
               <RefreshCw className="size-3.5" />
-              Nuevo trade
+              New trade
             </button>
           </div>
         )}
@@ -429,14 +429,14 @@ export default function OrderForm({
             >
               {guardianState === "checking" && <Loader2 className="size-3.5 animate-spin" />}
               {newsBlocked
-                ? "🔒 Bloqueado por noticias"
+                ? "🔒 Blocked — news event"
                 : gradeBlocked
-                ? "Grade C — no operar"
+                ? "Grade C — no trading"
                 : noSl
-                ? "Define Stop Loss primero"
+                ? "Set Stop Loss first"
                 : guardianState === "checking"
-                ? "Validando..."
-                : `Validar ${direction} · ${instrument}`}
+                ? "Validating..."
+                : `Validate ${direction} · ${instrument}`}
             </button>
           </>
         )}
