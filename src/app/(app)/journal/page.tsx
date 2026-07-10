@@ -3,12 +3,14 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, TrendingUp, TrendingDown, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, TrendingDown, Trash2, SlidersHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import { createClient } from "@/lib/supabase/client";
+import MonthlyPnLBars from "@/components/journal/MonthlyPnLBars";
+import WeekBreakdownCarousel from "@/components/journal/WeekBreakdownCarousel";
 
 type Trade = {
   id: string;
@@ -40,6 +42,7 @@ export default function JournalPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [directionFilter, setDirectionFilter] = useState<"ALL" | "LONG" | "SHORT">("ALL");
 
   const supabase = useMemo(() => createClient(), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,9 +110,15 @@ export default function JournalPage() {
   }, [trades]);
 
   const selectedTrades = selectedDay ? (byDay[selectedDay] ?? []) : [];
+  const filteredTrades = directionFilter === "ALL"
+    ? selectedTrades
+    : selectedTrades.filter(t => t.direction === directionFilter);
+  const filteredPnL = filteredTrades.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
   const monthPnL = trades.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
   const winners = trades.filter(t => (t.net_pnl ?? 0) > 0).length;
   const winRate = trades.length > 0 ? Math.round((winners / trades.length) * 100) : null;
+  const bestTrade = trades.length > 0 ? Math.max(...trades.map(t => t.net_pnl ?? 0)) : null;
+  const worstTrade = trades.length > 0 ? Math.min(...trades.map(t => t.net_pnl ?? 0)) : null;
 
   const totalDays = daysInMonth(year, month);
   const startOffset = firstDayOfMonth(year, month);
@@ -123,7 +132,7 @@ export default function JournalPage() {
         <div className="flex-1 overflow-y-auto p-6">
 
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-surface-2 text-text-secondary transition-colors">
                 <ChevronLeft className="size-4" />
@@ -134,18 +143,6 @@ export default function JournalPage() {
               <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-surface-2 text-text-secondary transition-colors">
                 <ChevronRight className="size-4" />
               </button>
-
-              {trades.length > 0 && (
-                <div className="flex items-center gap-4 ml-4 pl-4 border-l border-border">
-                  <span className={cn("text-sm font-mono font-medium", monthPnL >= 0 ? "text-profit" : "text-loss")}>
-                    {monthPnL >= 0 ? "+" : ""}{monthPnL.toFixed(2)} USD
-                  </span>
-                  <span className="text-xs text-text-disabled">{trades.length} trades</span>
-                  {winRate !== null && (
-                    <span className="text-xs text-text-disabled">{winRate}% win rate</span>
-                  )}
-                </div>
-              )}
             </div>
 
             <button
@@ -154,6 +151,48 @@ export default function JournalPage() {
             >
               <Plus className="size-3.5" />
               Register trade
+            </button>
+          </div>
+
+          {/* Stats row */}
+          <div className="flex items-center gap-2 mb-6 bg-surface border border-border rounded-2xl px-5 py-3 overflow-x-auto">
+            {[
+              {
+                label: "Net P&L",
+                value: trades.length > 0 ? `${monthPnL >= 0 ? "+" : "-"}$${Math.abs(monthPnL).toFixed(2)}` : "—",
+                color: trades.length > 0 ? (monthPnL >= 0 ? "text-profit" : "text-loss") : "text-text-disabled",
+              },
+              {
+                label: "Win Rate",
+                value: winRate !== null ? `${winRate}%` : "—",
+                color: "text-text-primary",
+              },
+              {
+                label: "Trades",
+                value: trades.length > 0 ? String(trades.length) : "—",
+                color: "text-text-primary",
+              },
+              {
+                label: "Best Trade",
+                value: bestTrade !== null ? `${bestTrade >= 0 ? "+" : "-"}$${Math.abs(bestTrade).toFixed(2)}` : "—",
+                color: bestTrade !== null && bestTrade >= 0 ? "text-profit" : "text-text-disabled",
+              },
+              {
+                label: "Worst Trade",
+                value: worstTrade !== null ? `${worstTrade >= 0 ? "+" : "-"}$${Math.abs(worstTrade).toFixed(2)}` : "—",
+                color: worstTrade !== null && worstTrade < 0 ? "text-loss" : "text-text-disabled",
+              },
+            ].map(({ label, value, color }, i) => (
+              <div key={label} className={cn("flex flex-col px-4 shrink-0", i > 0 && "border-l border-border")}>
+                <span className="text-[10px] text-text-disabled uppercase tracking-wide">{label}</span>
+                <span className={cn("text-sm font-mono font-semibold", color)}>{value}</span>
+              </div>
+            ))}
+            <button
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-light text-xs text-text-secondary hover:bg-surface-2 transition-colors shrink-0"
+            >
+              <SlidersHorizontal className="size-3.5" />
+              Filters
             </button>
           </div>
 
@@ -234,7 +273,7 @@ export default function JournalPage() {
           </div>
 
           {!loading && trades.length === 0 && (
-            <div className="text-center mt-16 space-y-3">
+            <div className="text-center mt-10 mb-6 space-y-3">
               <p className="text-sm text-text-disabled">No trades this month</p>
               <button
                 onClick={() => router.push("/journal/new")}
@@ -245,59 +284,108 @@ export default function JournalPage() {
               </button>
             </div>
           )}
+
+          {/* ── Bottom section: monthly summary + week breakdown ── */}
+          <div className="mt-8 space-y-6 pb-6">
+            {userId && <MonthlyPnLBars userId={userId} />}
+            <WeekBreakdownCarousel year={year} month={month} trades={trades} />
+          </div>
         </div>
 
         {/* ── Right panel — day detail ──────────────────── */}
         <div className="w-72 border-l border-border-light bg-surface-light flex flex-col shrink-0 overflow-y-auto">
           {selectedDay && selectedTrades.length > 0 ? (
-            <div className="p-4 space-y-2">
-              <p className="text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-3">
-                {MONTHS[month].slice(0, 3)} {selectedDay} · {selectedTrades.length} trade{selectedTrades.length !== 1 ? "s" : ""}
-              </p>
-              {selectedTrades.map(t => (
-                <div
-                  key={t.id}
-                  onClick={() => router.push(`/journal/${t.id}`)}
-                  className="group bg-surface-hi border border-border-light rounded-xl p-3 cursor-pointer hover:border-accent/50 transition-colors space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      {t.direction === "LONG"
-                        ? <TrendingUp className="size-3.5 text-profit shrink-0" />
-                        : <TrendingDown className="size-3.5 text-loss shrink-0" />}
-                      <span className="text-sm font-medium text-text-primary">{t.instrument}</span>
-                      <span className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded font-medium",
-                        t.direction === "LONG" ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"
-                      )}>
-                        {t.direction}
+            <div className="flex flex-col h-full">
+              {/* Trades list */}
+              <div className="p-4 space-y-2 flex-1">
+                <p className="text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-3">
+                  {MONTHS[month].slice(0, 3)} {selectedDay} · {selectedTrades.length} trade{selectedTrades.length !== 1 ? "s" : ""}
+                </p>
+                {filteredTrades.map(t => (
+                  <div
+                    key={t.id}
+                    onClick={() => router.push(`/journal/${t.id}`)}
+                    className="group bg-surface-hi border border-border-light rounded-xl p-3 cursor-pointer hover:border-accent/50 transition-colors space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {t.direction === "LONG"
+                          ? <TrendingUp className="size-3.5 text-profit shrink-0" />
+                          : <TrendingDown className="size-3.5 text-loss shrink-0" />}
+                        <span className="text-sm font-medium text-text-primary">{t.instrument}</span>
+                        <span className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                          t.direction === "LONG" ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"
+                        )}>
+                          {t.direction}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={cn(
+                          "text-sm font-mono font-semibold",
+                          (t.net_pnl ?? 0) >= 0 ? "text-profit" : "text-loss"
+                        )}>
+                          {(t.net_pnl ?? 0) >= 0 ? "+" : ""}{(t.net_pnl ?? 0).toFixed(2)}
+                        </span>
+                        <button
+                          onClick={(e) => handleDelete(t.id, e)}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-disabled hover:text-loss hover:bg-loss/10 transition-all"
+                          title="Delete trade"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-text-disabled">
+                      <span>{t.session?.replace("_", " ") ?? "—"}</span>
+                      <span>{t.return_r != null ? `${t.return_r > 0 ? "+" : ""}${t.return_r.toFixed(2)}R` : "—"}</span>
+                      <span className={t.followed_plan === true ? "text-profit" : t.followed_plan === false ? "text-loss" : ""}>
+                        {t.followed_plan === true ? "✓ plan" : t.followed_plan === false ? "✗ plan" : "—"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={cn(
-                        "text-sm font-mono font-semibold",
-                        (t.net_pnl ?? 0) >= 0 ? "text-profit" : "text-loss"
-                      )}>
-                        {(t.net_pnl ?? 0) >= 0 ? "+" : ""}{(t.net_pnl ?? 0).toFixed(2)}
-                      </span>
-                      <button
-                        onClick={(e) => handleDelete(t.id, e)}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-disabled hover:text-loss hover:bg-loss/10 transition-all"
-                        title="Delete trade"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-text-disabled">
-                    <span>{t.session?.replace("_", " ") ?? "—"}</span>
-                    <span>{t.return_r != null ? `${t.return_r > 0 ? "+" : ""}${t.return_r.toFixed(2)}R` : "—"}</span>
-                    <span className={t.followed_plan === true ? "text-profit" : t.followed_plan === false ? "text-loss" : ""}>
-                      {t.followed_plan === true ? "✓ plan" : t.followed_plan === false ? "✗ plan" : "—"}
-                    </span>
-                  </div>
+                ))}
+                {filteredTrades.length === 0 && (
+                  <p className="text-xs text-text-disabled text-center pt-4">No {directionFilter} trades this day</p>
+                )}
+              </div>
+
+              {/* ── Trades Taken summary block ── */}
+              <div className="border-t border-border-light p-4 space-y-3 shrink-0">
+                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Trades Taken</p>
+                <div className="flex items-center gap-1.5">
+                  {(["ALL", "LONG", "SHORT"] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setDirectionFilter(f)}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-colors",
+                        directionFilter === f
+                          ? f === "LONG"
+                            ? "bg-profit/15 border-profit/40 text-profit"
+                            : f === "SHORT"
+                              ? "bg-loss/15 border-loss/40 text-loss"
+                              : "bg-accent-soft border-accent/40 text-accent"
+                          : "bg-surface-hi border-border-light text-text-disabled hover:text-text-secondary"
+                      )}
+                    >
+                      {f}
+                    </button>
+                  ))}
                 </div>
-              ))}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">
+                    {filteredTrades.length} trade{filteredTrades.length !== 1 ? "s" : ""}
+                    {directionFilter !== "ALL" && ` ${directionFilter}`}
+                  </span>
+                  <span className={cn(
+                    "text-base font-mono font-bold",
+                    filteredPnL >= 0 ? "text-profit" : "text-loss"
+                  )}>
+                    {filteredPnL >= 0 ? "+" : ""}{filteredPnL.toFixed(2)}
+                  </span>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center p-6 text-center">
