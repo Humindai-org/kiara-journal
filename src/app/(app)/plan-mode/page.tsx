@@ -22,6 +22,8 @@ import { parseRuleArray } from "@/components/plan/planData";
 import type { RuleItem } from "@/components/plan/planData";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
+import { ModelDiagram, DiagramTypePicker, detectDiagramType } from "@/components/plan/ModelDiagram";
+import type { DiagramType } from "@/components/plan/ModelDiagram";
 
 type Plan = Database["public"]["Tables"]["plans"]["Row"];
 type TabKey = "overview" | "proceso" | "entrada" | "gestion" | "salida" | "notas" | "stats";
@@ -291,15 +293,16 @@ function ChartingDiagram({ items }: { items: RuleItem[] }) {
 
 function ModelMiniCard({ item, active, onToggle }: { item: RuleItem; active: boolean; onToggle?: () => void }) {
   const acronym = getModelAcronym(item.label);
+  const effectiveType = (item.diagramType as DiagramType) || detectDiagramType(item.label);
   return (
     <button
       type="button"
       onClick={onToggle}
       className={cn(
-        "relative rounded-xl border px-3 pt-2 pb-3 flex-shrink-0 w-28 text-center transition-all",
+        "relative rounded-xl border px-2 pt-2 pb-2.5 flex-shrink-0 w-28 text-center transition-all",
         item.enabled
           ? "border-accent/40 bg-[#1c1836]"
-          : "border-border bg-surface-2 opacity-60",
+          : "border-border bg-surface-2 opacity-50",
         onToggle && "cursor-pointer hover:border-accent/60 hover:opacity-100 active:scale-95"
       )}
     >
@@ -311,28 +314,16 @@ function ModelMiniCard({ item, active, onToggle }: { item: RuleItem; active: boo
       {item.image ? (
         <div className="relative w-full mb-1.5 rounded overflow-hidden" style={{ height: 40 }}>
           <img src={item.image} alt="" className="w-full h-full object-cover"
-            style={{ filter: "brightness(0.72) saturate(1.4) contrast(1.05)" }} />
-          <div className="absolute inset-0" style={{ background: "rgba(157,139,255,0.10)" }} />
+            style={{ filter: "brightness(0.8) saturate(1.3)" }} />
+          <div className="absolute inset-0" style={{ background: "rgba(157,139,255,0.08)" }} />
         </div>
       ) : (
-        <svg viewBox="0 0 72 46" className="w-full mb-1.5" style={{ height: 40 }}>
-          {item.enabled ? (
-            <>
-              <rect x="6" y="18" width="13" height="20" fill="rgba(139,92,246,0.22)"
-                stroke="rgba(139,92,246,0.55)" strokeWidth="1" rx="1" />
-              <rect x="27" y="26" width="13" height="12" fill="rgba(139,92,246,0.12)"
-                stroke="rgba(139,92,246,0.28)" strokeWidth="1" rx="1" strokeDasharray="2,1" />
-              <line x1="20" y1="28" x2="56" y2="8" stroke="#44e4b2" strokeWidth="1.5" strokeLinecap="round" />
-              <polygon points="54,5 59,11 53,12" fill="#44e4b2" />
-            </>
-          ) : (
-            <>
-              <rect x="6" y="18" width="13" height="20" fill="rgba(127,120,155,0.08)"
-                stroke="rgba(127,120,155,0.18)" strokeWidth="1" rx="1" />
-              <line x1="20" y1="28" x2="56" y2="14" stroke="rgba(127,120,155,0.25)" strokeWidth="1.5" strokeLinecap="round" />
-            </>
-          )}
-        </svg>
+        <ModelDiagram
+          type={effectiveType}
+          enabled={item.enabled}
+          className="w-full mb-1.5"
+          style={{ height: 40 }}
+        />
       )}
       <p className={cn(
         "text-[10px] font-semibold leading-tight",
@@ -494,12 +485,8 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
     onChange([...items, { id: `model_${Date.now()}`, label: trimmed, enabled: true, isCustom: true }]);
     setNewLabel("");
   }
-  async function handleImageUpload(id: string, file: File) {
-    if (!file.type.startsWith("image/")) return;
-    try {
-      const img = await compressImage(file);
-      onChange(items.map((i) => i.id === id ? { ...i, image: img } : i));
-    } catch { /* ignore */ }
+  function setDiagramType(id: string, type: string | undefined) {
+    onChange(items.map((i) => i.id === id ? { ...i, diagramType: type } : i));
   }
 
   return (
@@ -533,6 +520,8 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
           const acronym = getModelAcronym(item.label);
           const restIdx = item.label.indexOf(" — ");
           const name = restIdx >= 0 ? item.label.slice(restIdx + 3).split(":")[0].trim() : "";
+          const detectedType = detectDiagramType(item.label);
+          const effectiveType = (item.diagramType as DiagramType) || detectedType;
 
           if (editing === item.id) {
             return (
@@ -555,41 +544,30 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
                 ? "border-accent/50 bg-[#1e1940] shadow-[0_4px_0_#5b45a8,0_0_20px_rgba(157,139,255,0.15)]"
                 : "border-border bg-surface-2 shadow-[0_4px_0_#13111e]"
             )}>
-              {/* Toggle area — entire top section is clickable */}
+              {/* Toggle area */}
               <div
                 role="button"
                 tabIndex={0}
                 onClick={() => toggle(item.id)}
                 onKeyDown={(e) => e.key === "Enter" && toggle(item.id)}
-                className={cn(
-                  "w-full p-3 text-left cursor-pointer select-none transition-opacity active:scale-95",
-                  !item.enabled && "opacity-60"
-                )}
+                className="w-full p-3 text-left cursor-pointer select-none active:scale-95 transition-transform"
               >
-                {/* Chart area: image or SVG */}
+                {/* Diagram or uploaded image */}
                 {item.image ? (
                   <div className="relative w-full mb-2 rounded-lg overflow-hidden" style={{ height: 44 }}>
                     <img src={item.image} alt="" className="w-full h-full object-cover"
-                      style={{ filter: "brightness(0.72) saturate(1.4) contrast(1.05)" }} />
-                    <div className="absolute inset-0 rounded-lg" style={{ background: "rgba(157,139,255,0.10)" }} />
+                      style={{ filter: "brightness(0.8) saturate(1.3)" }} />
+                    <div className="absolute inset-0 rounded-lg" style={{ background: "rgba(157,139,255,0.08)" }} />
                   </div>
                 ) : (
-                  <svg viewBox="0 0 72 46" className="w-full mb-2" style={{ height: 38 }}>
-                    {item.enabled ? (
-                      <>
-                        <rect x="6" y="18" width="13" height="20" fill="rgba(139,92,246,0.22)" stroke="rgba(139,92,246,0.55)" strokeWidth="1" rx="1" />
-                        <rect x="27" y="26" width="13" height="12" fill="rgba(139,92,246,0.1)" stroke="rgba(139,92,246,0.28)" strokeWidth="1" rx="1" strokeDasharray="2,1" />
-                        <line x1="20" y1="28" x2="56" y2="8" stroke="#44e4b2" strokeWidth="1.5" strokeLinecap="round" />
-                        <polygon points="54,5 59,11 53,12" fill="#44e4b2" />
-                      </>
-                    ) : (
-                      <>
-                        <rect x="6" y="18" width="13" height="20" fill="rgba(127,120,155,0.08)" stroke="rgba(127,120,155,0.18)" strokeWidth="1" rx="1" />
-                        <line x1="20" y1="28" x2="56" y2="14" stroke="rgba(127,120,155,0.2)" strokeWidth="1.5" strokeLinecap="round" />
-                      </>
-                    )}
-                  </svg>
+                  <ModelDiagram
+                    type={effectiveType}
+                    enabled={item.enabled}
+                    className="w-full mb-2"
+                    style={{ height: 44 }}
+                  />
                 )}
+
                 <p className={cn("text-sm font-black font-mono tracking-tight",
                   item.enabled ? "text-accent" : "text-text-disabled")}>{acronym}</p>
                 {name && <p className={cn("text-[10px] mt-0.5 leading-snug truncate",
@@ -602,31 +580,47 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
                 )}
               </div>
 
-              {/* Edit controls bar — only in edit mode */}
+              {/* Edit controls */}
               {canEdit && (
-                <div className="border-t border-border/60 grid grid-cols-3 divide-x divide-border/60">
-                  <label
-                    htmlFor={`img-${item.id}`}
-                    className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 cursor-pointer transition-colors"
-                    title="Subir imagen del chart"
-                  >
-                    <ImagePlus className="size-3" />
-                    <span className="text-[8px]">{item.image ? "Change" : "Image"}</span>
-                    <input id={`img-${item.id}`} type="file" accept="image/*" className="hidden"
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(item.id, f); e.target.value = ""; }} />
-                  </label>
-                  <button type="button"
-                    onClick={() => { setEditing(item.id); setDraft(item.label); }}
-                    className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 transition-colors">
-                    <Pencil className="size-3" />
-                    <span className="text-[8px]">Name</span>
-                  </button>
-                  <button type="button"
-                    onClick={() => remove(item.id)}
-                    className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-loss hover:bg-loss/5 transition-colors">
-                    <Trash2 className="size-3" />
-                    <span className="text-[8px]">Delete</span>
-                  </button>
+                <div className="border-t border-border/60">
+                  {/* Diagram type picker — always shown in edit mode */}
+                  <DiagramTypePicker
+                    value={item.diagramType}
+                    detectedType={detectedType}
+                    onChange={(t) => setDiagramType(item.id, t)}
+                  />
+                  {/* Image / Name / Delete row */}
+                  <div className="grid grid-cols-3 divide-x divide-border/60">
+                    <label
+                      htmlFor={`img-${item.id}`}
+                      className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 cursor-pointer transition-colors"
+                    >
+                      <ImagePlus className="size-3" />
+                      <span className="text-[8px]">{item.image ? "Change" : "Image"}</span>
+                      <input id={`img-${item.id}`} type="file" accept="image/*" className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f || !f.type.startsWith("image/")) return;
+                          try {
+                            const img = await compressImage(f);
+                            onChange(items.map((i) => i.id === item.id ? { ...i, image: img } : i));
+                          } catch { /* ignore */ }
+                          e.target.value = "";
+                        }} />
+                    </label>
+                    <button type="button"
+                      onClick={() => { setEditing(item.id); setDraft(item.label); }}
+                      className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-accent hover:bg-accent/5 transition-colors">
+                      <Pencil className="size-3" />
+                      <span className="text-[8px]">Name</span>
+                    </button>
+                    <button type="button"
+                      onClick={() => remove(item.id)}
+                      className="flex flex-col items-center gap-0.5 py-1.5 text-text-disabled hover:text-loss hover:bg-loss/5 transition-colors">
+                      <Trash2 className="size-3" />
+                      <span className="text-[8px]">Delete</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -668,6 +662,8 @@ export default function PlanModePage() {
   const [editMode, setEditMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [chartingImage, setChartingImage] = useState<string | null>(null);
+  // Ref to guard fetchPlans from overriding form when in new-plan mode
+  const isNewRef = useRef(false);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const supabase = useMemo(() => createClient(), []);
@@ -680,7 +676,8 @@ export default function PlanModePage() {
     if (error) { toast.error("Error loading plans"); return; }
     const rows = data as Plan[] | null;
     setPlans(rows ?? []);
-    if (rows && rows.length > 0 && !keepSelection && !selectedId) {
+    // Never auto-select when user is actively creating a new plan
+    if (rows && rows.length > 0 && !keepSelection && !selectedId && !isNewRef.current) {
       const active = rows.find((p) => p.is_active) ?? rows[0];
       setSelectedId(active.id);
       setForm(dbToForm(active));
@@ -699,6 +696,7 @@ export default function PlanModePage() {
   }, []);
 
   function selectPlan(plan: Plan) {
+    isNewRef.current = false;
     setSelectedId(plan.id);
     setForm(dbToForm(plan));
     try {
@@ -708,9 +706,13 @@ export default function PlanModePage() {
     setIsNew(false); setEditMode(false); setActiveTab("overview");
   }
   function startNew() {
-    setSelectedId(null); setIsNew(true);
-    setForm(defaultPlanForm()); setChartingImage(null);
-    setEditMode(true); setActiveTab("overview");
+    isNewRef.current = true;
+    setSelectedId(null);
+    setIsNew(true);
+    setForm(defaultPlanForm());
+    setChartingImage(null);
+    setEditMode(true);
+    setActiveTab("overview");
   }
   function set<K extends keyof PlanFormData>(key: K, value: PlanFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -726,6 +728,7 @@ export default function PlanModePage() {
         const { data, error } = await db.from("plans").insert(payload).select().single();
         if (error) throw error;
         const created = data as Plan;
+        isNewRef.current = false;
         setPlans((p) => [created, ...p]); setSelectedId(created.id);
         setIsNew(false); setEditMode(false); toast.success("Plan created");
       } else if (selectedId) {

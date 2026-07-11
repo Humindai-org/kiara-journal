@@ -4,6 +4,7 @@ export interface RuleItem {
   enabled: boolean;
   isCustom?: boolean;
   image?: string;
+  diagramType?: string; // override for custom models: "RPB" | "BPB" | "IPB" | "EF" | "generic"
 }
 
 // ─── MATVARD template generators ─────────────────────────────
