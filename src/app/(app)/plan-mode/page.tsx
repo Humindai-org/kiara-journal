@@ -299,11 +299,11 @@ function ModelMiniCard({ item, active, onToggle }: { item: RuleItem; active: boo
       type="button"
       onClick={onToggle}
       className={cn(
-        "relative rounded-xl border px-2 pt-2 pb-2.5 flex-shrink-0 w-28 text-center transition-all",
+        "relative w-full rounded-xl border px-2 pt-2.5 pb-2 text-center transition-all",
         item.enabled
-          ? "border-accent/40 bg-[#1c1836]"
+          ? "border-accent/40 bg-[#1c1836] shadow-[0_4px_0_#2a1f5a]"
           : "border-border bg-surface-2 opacity-50",
-        onToggle && "cursor-pointer hover:border-accent/60 hover:opacity-100 active:scale-95"
+        onToggle && "cursor-pointer hover:border-accent/60 hover:opacity-100 active:scale-[0.97]"
       )}
     >
       {active && (
@@ -312,7 +312,7 @@ function ModelMiniCard({ item, active, onToggle }: { item: RuleItem; active: boo
         </div>
       )}
       {item.image ? (
-        <div className="relative w-full mb-1.5 rounded overflow-hidden" style={{ height: 40 }}>
+        <div className="relative w-full mb-2 rounded-lg overflow-hidden" style={{ height: 62 }}>
           <img src={item.image} alt="" className="w-full h-full object-cover"
             style={{ filter: "brightness(0.8) saturate(1.3)" }} />
           <div className="absolute inset-0" style={{ background: "rgba(157,139,255,0.08)" }} />
@@ -321,12 +321,12 @@ function ModelMiniCard({ item, active, onToggle }: { item: RuleItem; active: boo
         <ModelDiagram
           type={effectiveType}
           enabled={item.enabled}
-          className="w-full mb-1.5"
-          style={{ height: 40 }}
+          className="w-full mb-2"
+          style={{ height: 62 }}
         />
       )}
       <p className={cn(
-        "text-[10px] font-semibold leading-tight",
+        "text-[11px] font-bold font-mono leading-tight",
         item.enabled ? "text-accent" : "text-text-disabled"
       )}>
         {acronym}
@@ -949,18 +949,25 @@ export default function PlanModePage() {
               <Pencil className="size-3.5" />
             </button>
           </div>
-          {form.model_items.length > 0 ? (
-            <div className="flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-1">
-              {form.model_items.map((item, i) => (
-                <ModelMiniCard
-                  key={item.id}
-                  item={item}
-                  active={i === 0 && item.enabled}
-                  onToggle={() => toggleModelEnabled(item.id)}
-                />
-              ))}
-            </div>
-          ) : (
+          {form.model_items.length > 0 ? (() => {
+            const n = form.model_items.length;
+            const cols = n <= 4 ? n : Math.ceil(n / 2);
+            return (
+              <div
+                className="grid gap-3"
+                style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+              >
+                {form.model_items.map((item, i) => (
+                  <ModelMiniCard
+                    key={item.id}
+                    item={item}
+                    active={i === 0 && item.enabled}
+                    onToggle={() => toggleModelEnabled(item.id)}
+                  />
+                ))}
+              </div>
+            );
+          })() : (
             <p className="text-xs text-text-disabled text-center py-6">No models defined</p>
           )}
         </div>
@@ -1094,25 +1101,16 @@ export default function PlanModePage() {
                 </div>
 
                 {/* Tags */}
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  {editMode ? (
+                {editMode && (
+                  <div className="flex items-center gap-2 mt-1.5">
                     <select value={form.plan_type} onChange={(e) => set("plan_type", e.target.value)}
                       className="bg-surface-2 border border-border rounded-md px-2 py-0.5 text-xs text-text-primary focus:outline-none focus:border-accent">
                       <option value="CUSTOM">Custom</option>
                       <option value="MATVARD_PHASE2">MATVARD Phase 2</option>
                       <option value="MATVARD_PHASE1">MATVARD Phase 1</option>
                     </select>
-                  ) : (
-                    <>
-                      <span className="text-[11px] text-text-disabled px-2 py-0.5 rounded-md border border-border bg-surface-2">
-                        {form.plan_type}
-                      </span>
-                      <span className="text-[11px] text-text-disabled px-2 py-0.5 rounded-md border border-border bg-surface-2">
-                        Based on ICT Concepts
-                      </span>
-                    </>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Right: metadata + actions */}
