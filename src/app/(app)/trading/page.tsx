@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { AlertTriangle, TrendingDown } from "lucide-react";
+import { AlertTriangle, TrendingDown, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import TradingViewWidget from "@/components/trading/TradingViewWidget";
@@ -11,6 +11,11 @@ import DailyPnLBar from "@/components/trading/DailyPnLBar";
 import SessionIndicator from "@/components/trading/SessionIndicator";
 import PositionsTable from "@/components/trading/PositionsTable";
 import MT5ConnectionCard from "@/components/trading/MT5ConnectionCard";
+import PreMarketModal, {
+  isPreMarketDoneToday,
+  getTodaySession,
+  type PreMarketSession,
+} from "@/components/trading/PreMarketModal";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
 
@@ -64,6 +69,8 @@ export default function TradingPage() {
   const [todayCount, setTodayCount] = useState(0);
   const [openCount, setOpenCount] = useState(0);
   const [warningLevel, setWarningLevel] = useState<WarningLevel>("safe");
+  const [showPreMarket, setShowPreMarket] = useState(false);
+  const [activeSession, setActiveSession] = useState<PreMarketSession | null>(null);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const supabase = useMemo(() => createClient(), []);
@@ -128,6 +135,15 @@ export default function TradingPage() {
     fetchData();
   }, [fetchData]);
 
+  // Show pre-market modal automatically if not done today
+  useEffect(() => {
+    if (!isPreMarketDoneToday()) {
+      setShowPreMarket(true);
+    } else {
+      setActiveSession(getTodaySession());
+    }
+  }, []);
+
   // Realtime subscription — refresh daily state whenever any trade changes
   useEffect(() => {
     if (!activeAccountId) return;
@@ -191,6 +207,17 @@ export default function TradingPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Pre-market modal — auto-shown once per day */}
+      {showPreMarket && (
+        <PreMarketModal
+          onComplete={(session) => {
+            setActiveSession(session);
+            setShowPreMarket(false);
+          }}
+          onDismiss={() => setShowPreMarket(false)}
+        />
+      )}
+
       <TopBar title="Trading" />
 
       {/* Exposure banner — shown when daily risk is elevated */}
@@ -210,6 +237,27 @@ export default function TradingPage() {
         {/* Right panel */}
         <div className="w-80 flex flex-col overflow-y-auto bg-surface border-l border-border shrink-0">
           <div className="p-4 flex flex-col gap-3">
+
+            {/* Pre-market review chip */}
+            <button
+              onClick={() => setShowPreMarket(true)}
+              className={cn(
+                "flex items-center justify-between px-3 py-2 rounded-xl border text-xs transition-colors",
+                activeSession
+                  ? "border-profit/20 bg-profit/5 text-profit hover:bg-profit/10"
+                  : "border-loss/25 bg-loss/8 text-loss hover:bg-loss/12",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <ClipboardList className="size-3.5" />
+                <span className="font-medium">
+                  {activeSession
+                    ? `Pre-market done · ${activeSession === "BOTH" ? "Full day" : activeSession === "LONDON" ? "London" : "New York"}`
+                    : "Pre-market review pending"}
+                </span>
+              </div>
+              <span className="text-[10px] opacity-60">Review</span>
+            </button>
 
             <SessionIndicator />
 
