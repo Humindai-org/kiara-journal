@@ -21,13 +21,15 @@ interface WeekBreakdownCarouselProps {
   year: number;
   month: number; // 0–11
   trades: Trade[];
+  /** Scopes discipline violations to one account, matching the trades above. */
+  accountId?: string | null;
 }
 
 function daysInMonth(y: number, m: number) {
   return new Date(y, m + 1, 0).getDate();
 }
 
-export default function WeekBreakdownCarousel({ year, month, trades }: WeekBreakdownCarouselProps) {
+export default function WeekBreakdownCarousel({ year, month, trades, accountId }: WeekBreakdownCarouselProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [violationsByWeek, setViolationsByWeek] = useState<Record<number, number>>({});
@@ -60,11 +62,14 @@ export default function WeekBreakdownCarousel({ year, month, trades }: WeekBreak
   useEffect(() => {
     const fromDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
     const toDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(totalDays).padStart(2, "0")}`;
-    supabase
+    let query = supabase
       .from("discipline_violations")
       .select("date")
       .gte("date", fromDate)
-      .lte("date", toDate)
+      .lte("date", toDate);
+    if (accountId) query = query.eq("account_id", accountId);
+
+    query
       .then(({ data }) => {
         const byWeek: Record<number, number> = {};
         for (const v of (data as { date: string }[] | null) ?? []) {
@@ -74,7 +79,7 @@ export default function WeekBreakdownCarousel({ year, month, trades }: WeekBreak
         }
         setViolationsByWeek(byWeek);
       });
-  }, [supabase, year, month, totalDays]);
+  }, [supabase, year, month, totalDays, accountId]);
 
   const monthTag = `${year}-${String(month + 1).padStart(2, "0")}`;
 

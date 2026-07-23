@@ -50,21 +50,45 @@ bun install
 
 #### Correr las migraciones
 
-En el panel de Supabase ve a **SQL Editor** y ejecuta los archivos de `supabase/migrations/` **en orden**:
+Con el [CLI de Supabase](https://supabase.com/docs/guides/cli) (recomendado):
+
+```bash
+brew install supabase/tap/supabase
+supabase link --project-ref <tu-project-ref>
+supabase db push
+```
 
 | Archivo | Qué hace |
 |---|---|
-| `0001_init.sql` | Tablas principales (accounts, plans, trades) |
-| `0002_seed.sql` | Ejemplo de cuenta (opcional — edita o ignora) |
+| `0001_init.sql` | Tablas principales (accounts, plans, trades, journal_entries, notebooks) |
+| `0002_seed.sql` | Desactivada — el wizard de onboarding la reemplaza |
 | `0003_plan_settings.sql` | Configuración de plan de trading |
 | `0004_briefings.sql` | Briefings diarios |
 | `0005_webhook_token.sql` | Token para webhooks MT5 |
-| `0006_recalculate_balance.sql` | Función de recálculo de balance |
+| `0006_recalculate_balance.sql` | Tipos de cuenta (MT5/Bitget/Bybit/Binance) + recálculo de balance |
 | `0007_metaapi.sql` | Integración MetaAPI |
-| `0008_dd_limits.sql` | Límites de drawdown por cuenta |
+| `0008_dd_limits.sql` | Límites de drawdown y stop diario por cuenta |
 | `0009_trade_status.sql` | Estados del ciclo de vida de trades |
+| `0010_tags_screenshots.sql` | Tags en trades y screenshots en el journal |
+| `0011_notebooks_v2.sql` | Notebook v2: categorías, carpetas, pin/favorito, tags, color |
 
-> Copia el contenido de cada archivo y ejecútalo uno a uno en el SQL Editor.
+Las migraciones se aplican **desde tu máquina**, no desde CI: automatizarlas en
+GitHub Actions obligaría a guardar la contraseña de la base de datos como secret
+del repo, y cualquiera con permiso de escritura podría extraerla — es acceso
+directo a Postgres saltándose RLS.
+
+Flujo de trabajo al añadir una migración:
+
+```bash
+# 1. escribe supabase/migrations/00XX_lo_que_sea.sql
+supabase migration list   # confirma qué está pendiente
+supabase db push          # aplícala
+# 2. commit + push → Vercel despliega el código
+```
+
+> También puedes pegar cada archivo en el **SQL Editor** de Supabase, pero entonces
+> el CLI no se entera de que se aplicó. Si lo haces así, avísale después con
+> `supabase migration repair --status applied 00XX`.
 
 #### Crear tu usuario
 

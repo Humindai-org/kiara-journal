@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { calcLots, calcRR, type SetupGrade } from "@/components/trading/RiskCalculator";
+import {
+  calcLots,
+  calcRR,
+  riskForGrade,
+  DEFAULT_RISK_PERCENT,
+  type SetupGrade,
+} from "@/components/trading/RiskCalculator";
 
 // POST /api/trades — register a trade as 'pending' after Risk Guardian approval.
 // Called from the OrderForm after the user confirms they will execute in MT5.
@@ -45,8 +51,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Account not found" }, { status: 404 });
   }
 
-  const { lots, riskUsd } = calcLots(symbol, entry, sl, grade);
+  // Risk budget comes from the account balance and the plan's risk-per-trade %,
+  // so position sizing scales with whatever account this user actually has.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: plan } = await (supabase as any)
+    .from("plans")
+    .select("risk_per_trade_percent")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  const planRiskPercent: number = plan?.risk_per_trade_percent ?? DEFAULT_RISK_PERCENT;
+  const budget = riskForGrade(account.current_balance ?? 0, planRiskPercent, grade);
+
+  const { lots, riskUsd } = calcLots(symbol, entry, sl, budget);
   const rr = tp ? calcRR(entry, sl, tp) : 0;
+
+  // What this specific trade actually risks, as a % of balance (stored on the row)
   const riskPercent = account.current_balance
     ? Math.round((riskUsd / account.current_balance) * 10000) / 100
     : null;

@@ -155,10 +155,6 @@ function ViolationPopup({ group, onClose }: { group: { name: string; violations:
   );
 }
 
-const INITIAL_BALANCE = 100000;
-const DD_LIMIT = 10000;
-const PROFIT_TARGET = 5000;
-
 function fmtUsd(n: number, sign = false) {
   const s = sign && n > 0 ? "+" : "";
   return `${s}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -181,13 +177,24 @@ function KpiCard({ label, value, sub, color, icon: Icon }: {
 }
 
 // ─── SVG Equity Curve ─────────────────────────────────────────
-function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance: number; date: string }[]; startBalance?: number }) {
+// Everything here is relative to `startBalance` — the balance the account had
+// when the visible period began. That keeps the curve readable whether the
+// account holds $400 or $100,000.
+function EquityCurve({ data, startBalance }: { data: { balance: number; date: string }[]; startBalance: number }) {
   const W = 800, H = 240, padL = 8, padR = 8, padT = 12, padB = 22;
   const points = [{ balance: startBalance, date: "Start" }, ...data];
   const balances = points.map(p => p.balance);
-  const min = Math.min(...balances, INITIAL_BALANCE);
-  const max = Math.max(...balances, INITIAL_BALANCE);
+
+  // Scale to the data's own range, with 8% headroom so the line never touches
+  // the edges. Guard the flat case (one trade, or a period with no movement).
+  const rawMin = Math.min(...balances);
+  const rawMax = Math.max(...balances);
+  const spread = rawMax - rawMin;
+  const pad = spread > 0 ? spread * 0.08 : Math.max(Math.abs(startBalance) * 0.01, 1);
+  const min = rawMin - pad;
+  const max = rawMax + pad;
   const range = max - min || 1;
+
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
 
@@ -196,9 +203,9 @@ function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance
 
   const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(p.balance).toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L ${x(points.length - 1).toFixed(1)} ${(H - padB).toFixed(1)} L ${padL} ${(H - padB).toFixed(1)} Z`;
-  const baselineY = y(INITIAL_BALANCE);
+  const baselineY = y(startBalance);
   const lastBalance = points[points.length - 1].balance;
-  const lineColor = lastBalance >= INITIAL_BALANCE ? "#34d399" : "#f87171";
+  const lineColor = lastBalance >= startBalance ? "#34d399" : "#f87171";
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 240 }} preserveAspectRatio="none">
@@ -208,7 +215,7 @@ function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance
           <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
         </linearGradient>
       </defs>
-      {/* baseline (initial balance) */}
+      {/* baseline — where this period started */}
       <line x1={padL} y1={baselineY} x2={W - padR} y2={baselineY} stroke="#6b6688" strokeWidth={1} strokeDasharray="4 4" />
       <path d={areaPath} fill="url(#eqGrad)" />
       <path d={linePath} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" />
@@ -243,7 +250,18 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
   const { activeAccountId, accounts } = useAccountStore();
   const account = accounts.find(a => a.id === activeAccountId) ?? null;
-  const initialBalance = account?.initial_balance ?? INITIAL_BALANCE;
+  const initialBalance = account?.initial_balance ?? 0;
+
+  // Risk fields live on the row but not yet in the generated Supabase types.
+  // `profit_target` arrives with migration 0012 — until then the target card
+  // simply hides rather than showing someone else's objective.
+  const risk = account as unknown as {
+    total_dd_floor?: number | null;
+    profit_target?: number | null;
+  } | null;
+  const ddFloor = risk?.total_dd_floor ?? null;
+  const ddLimit = ddFloor != null ? Math.max(0, initialBalance - ddFloor) : null;
+  const profitTarget = risk?.profit_target ?? null;
 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,7 +345,9 @@ export default function DashboardPage() {
       .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
 
     const balance = initialBalance + totalPnl;
-    const progressToTarget = Math.max(0, Math.min(100, (totalPnl / PROFIT_TARGET) * 100));
+    const progressToTarget = profitTarget && profitTarget > 0
+      ? Math.max(0, Math.min(100, (totalPnl / profitTarget) * 100))
+      : null;
 
     const instrGroups = buildDisciplineGroups(closed, t => t.instrument);
     const sessionGroups = buildDisciplineGroups(closed, t => t.session?.replace("_", " ") ?? "—");
@@ -339,7 +359,7 @@ export default function DashboardPage() {
       sessionData, instrData, progressToTarget, streak,
       instrGroups, sessionGroups,
     };
-  }, [trades, initialBalance]);
+  }, [trades, initialBalance, profitTarget]);
 
   const { equityForDisplay, equityStartBalance } = useMemo(() => {
     if (equityPeriod === "all" || stats.equity.length === 0) {
@@ -365,6 +385,10 @@ export default function DashboardPage() {
   }
 
   const hasData = stats.tradeCount > 0;
+  const periodEndBalance = equityForDisplay.length > 0
+    ? equityForDisplay[equityForDisplay.length - 1].balance
+    : equityStartBalance;
+  const periodDelta = periodEndBalance - equityStartBalance;
   const maxSessionAbs = Math.max(...stats.sessionData.map(d => Math.abs(d.pnl)), 1);
   const maxInstrAbs = Math.max(...stats.instrData.map(d => Math.abs(d.pnl)), 1);
 
@@ -415,33 +439,61 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Phase 2 progress ──────────────────────────── */}
-        <div className="card-light p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="size-4 text-accent" />
-              <p className="text-sm font-medium text-text-primary">Phase 2 Progress</p>
+        {/* ── Objective progress ────────────────────────── */}
+        {(profitTarget != null || ddLimit != null) && (
+          <div className="card-light p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Target className="size-4 text-accent" />
+                <p className="text-sm font-medium text-text-primary">Objective progress</p>
+              </div>
+              {profitTarget != null && (
+                <span className="text-xs text-text-secondary">
+                  ${fmtUsd(Math.max(0, stats.totalPnl))} / ${fmtUsd(profitTarget)} target
+                </span>
+              )}
             </div>
-            <span className="text-xs text-text-secondary">
-              ${fmtUsd(Math.max(0, stats.totalPnl))} / ${fmtUsd(PROFIT_TARGET)} target
-            </span>
+            {stats.progressToTarget != null && (
+              <div className="h-2.5 bg-surface-hi rounded-full overflow-hidden">
+                <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${stats.progressToTarget}%` }} />
+              </div>
+            )}
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-[11px] text-text-disabled">
+                {stats.progressToTarget != null
+                  ? `${stats.progressToTarget.toFixed(1)}% of target`
+                  : "No profit target set for this account"}
+              </span>
+              {ddLimit != null && (
+                <span className={cn("text-[11px]", stats.maxDD > ddLimit * 0.7 ? "text-loss" : "text-text-disabled")}>
+                  Max DD: ${fmtUsd(stats.maxDD)} / ${fmtUsd(ddLimit)}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="h-2.5 bg-surface-hi rounded-full overflow-hidden">
-            <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${stats.progressToTarget}%` }} />
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-[11px] text-text-disabled">{stats.progressToTarget.toFixed(1)}% of target</span>
-            <span className={cn("text-[11px]", stats.maxDD > DD_LIMIT * 0.7 ? "text-loss" : "text-text-disabled")}>
-              Max DD: ${fmtUsd(stats.maxDD)} / ${fmtUsd(DD_LIMIT)}
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* ── Equity curve + discipline ─────────────────── */}
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2 card p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-text-primary">Equity curve</p>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Equity curve</p>
+                {hasData && equityForDisplay.length > 0 && (
+                  <p className="text-[11px] text-text-disabled font-mono mt-0.5">
+                    Start ${fmtUsd(equityStartBalance)}
+                    <span className={cn(
+                      "ml-2",
+                      periodDelta >= 0 ? "text-profit" : "text-loss"
+                    )}>
+                      {periodDelta >= 0 ? "+" : "-"}${fmtUsd(Math.abs(periodDelta))}
+                      {equityStartBalance > 0 && (
+                        <> · {periodDelta >= 0 ? "+" : ""}{((periodDelta / equityStartBalance) * 100).toFixed(2)}%</>
+                      )}
+                    </span>
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 {hasData && equityForDisplay.length > 0 && (
                   <span className="text-xs font-mono text-text-secondary">

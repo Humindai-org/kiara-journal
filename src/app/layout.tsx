@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Trading Kiara Journal",
+  title: "Trading Journal",
   description: "Professional forex/CFD trading journal for funded account management",
 };
 

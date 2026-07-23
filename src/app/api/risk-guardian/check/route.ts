@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { calcLots, calcRR, type SetupGrade } from "@/components/trading/RiskCalculator";
+import {
+  calcLots,
+  calcRR,
+  riskForGrade,
+  maxRiskPerTrade,
+  DEFAULT_RISK_PERCENT,
+  type SetupGrade,
+} from "@/components/trading/RiskCalculator";
 
 type CheckResult = "PASS" | "CAUTION" | "STOP";
 
@@ -74,10 +81,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Account not found" }, { status: 404 });
   }
 
+  // ── Load the active plan (risk rules live here, not in constants) ──────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: plan } = await (supabase as any)
+    .from("plans")
+    .select("max_trades_per_day, max_daily_loss, risk_per_trade_percent, max_consecutive_losses")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
+
   const balance: number = account.current_balance ?? 0;
-  const personalDailyStop: number = account.personal_daily_stop_usd ?? 300;
-  const totalDdFloor: number = account.total_dd_floor ?? (account.initial_balance ?? balance) * 0.90;
+  const initialBalance: number = account.initial_balance ?? balance;
+  const riskPercent: number = plan?.risk_per_trade_percent ?? DEFAULT_RISK_PERCENT;
+
+  // Daily stop: the account's own value, else the plan's, else one trade's worth of risk.
+  const personalDailyStop: number =
+    account.personal_daily_stop_usd ??
+    plan?.max_daily_loss ??
+    maxRiskPerTrade(balance, riskPercent);
+
+  // Firm DD floor: the account's own value, else 10% below the starting balance.
+  const totalDdFloor: number = account.total_dd_floor ?? initialBalance * 0.9;
   const totalDdRemaining = Math.max(0, balance - totalDdFloor);
+  const totalDdAllowance = Math.max(0, initialBalance - totalDdFloor);
 
   // ── Load today's trades ───────────────────────────────────────────────────
   const todayStart = new Date();
@@ -111,10 +137,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Calculate trade risk ──────────────────────────────────────────────────
-  const { riskUsd } = calcLots(symbol, entry || sl, sl, grade);
+  const budget = riskForGrade(balance, riskPercent, grade);
+  const { riskUsd } = calcLots(symbol, entry || sl, sl, budget);
 
-  // Max risk per trade = personal daily stop (e.g. $300 for TTP)
-  const maxAllowedRisk = personalDailyStop;
+  // Max risk per trade = the account's A+ budget (balance × risk %)
+  const maxAllowedRisk = maxRiskPerTrade(balance, riskPercent);
 
   // Detect real entry price (MARKET orders send entry=sl as fallback)
   const hasRealEntry = entry > 0 && Math.abs(entry - sl) > 0.000001;
@@ -150,13 +177,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Check C — Firm account total DD floor
+  // The critical zone is the last N% of the account's own DD allowance, so it
+  // means the same thing on a $400 account as on a $100K one. The user picks N
+  // in the onboarding wizard; 20% is the suggested default until 0012 lands.
+  const ddWarningPercent: number =
+    (account as { dd_warning_percent?: number | null }).dd_warning_percent ?? 20;
+  const criticalDdZone = totalDdAllowance * (ddWarningPercent / 100);
   const afterTotalRisk = totalDdRemaining - riskUsd;
   if (afterTotalRisk < 0) {
     checks.push({ id: "C", label: "Firm DD limit", result: "STOP",
       message: `This trade would breach the firm's floor ($${totalDdFloor.toLocaleString("en-US", { maximumFractionDigits: 0 })})` });
-  } else if (totalDdRemaining < 2000) {
+  } else if (criticalDdZone > 0 && totalDdRemaining < criticalDdZone) {
     checks.push({ id: "C", label: "Firm DD limit", result: "CAUTION",
-      message: `$${totalDdRemaining.toFixed(0)} left on firm account — critical zone (<$2,000)` });
+      message: `$${totalDdRemaining.toFixed(0)} left of your $${totalDdAllowance.toFixed(0)} drawdown allowance — critical zone (last ${ddWarningPercent}%)` });
   } else {
     checks.push({ id: "C", label: "Firm DD limit", result: "PASS",
       message: `$${totalDdRemaining.toFixed(0)} buffer above firm's floor ($${totalDdFloor.toLocaleString("en-US", { maximumFractionDigits: 0 })})` });
@@ -183,15 +216,8 @@ export async function POST(req: NextRequest) {
   // ── Discipline warnings ───────────────────────────────────────────────────
   const disciplineWarnings: DisciplineWarning[] = [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: plan } = await (supabase as any)
-    .from("plans")
-    .select("max_trades_per_day")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
   const maxTradesPerDay: number = plan?.max_trades_per_day ?? 3;
+  const maxConsecutiveLosses: number = plan?.max_consecutive_losses ?? 2;
 
   if (tradeCountToday >= maxTradesPerDay) {
     disciplineWarnings.push({
@@ -200,26 +226,19 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (consecutiveLosses >= 2) {
+  if (consecutiveLosses >= maxConsecutiveLosses) {
     disciplineWarnings.push({
       type: "CONSECUTIVE_LOSSES",
-      message: `${consecutiveLosses} consecutive losses today. Your rule says close the session after 2 stop losses in a row.`,
+      message: `${consecutiveLosses} consecutive losses today. Your plan says close the session after ${maxConsecutiveLosses} stop losses in a row.`,
     });
   }
 
-  const dayOfWeek = new Date().getDay();
-  if (dayOfWeek === 5 && grade !== "A+") {
-    disciplineWarnings.push({
-      type: "FRIDAY_GRADE",
-      message: `It's Friday — your rules allow only A+ setups. This setup is grade ${grade}.`,
-    });
-  }
-
-  const totalDdUsed = (account.initial_balance ?? 100000) - balance;
-  if (totalDdUsed > 5000 && grade === "B") {
+  // Protection mode: half the drawdown allowance is gone, so drop the weakest grade.
+  const totalDdUsed = initialBalance - balance;
+  if (totalDdAllowance > 0 && totalDdUsed > totalDdAllowance * 0.5 && grade === "B") {
     disciplineWarnings.push({
       type: "PROTECTION_MODE",
-      message: `Protection mode: only A/A+ setups when more than $5,000 of total DD is consumed ($${totalDdUsed.toFixed(0)} used).`,
+      message: `Protection mode: over half your drawdown allowance is used ($${totalDdUsed.toFixed(0)} of $${totalDdAllowance.toFixed(0)}). Take only A/A+ setups.`,
     });
   }
 

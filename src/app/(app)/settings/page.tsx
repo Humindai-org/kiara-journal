@@ -287,7 +287,7 @@ export default function SettingsPage() {
                   <input
                     value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="TTP $100K — Fase 2"
+                    placeholder="My funded account"
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
                   />
                 </div>
@@ -308,7 +308,7 @@ export default function SettingsPage() {
                   <input
                     value={form.broker}
                     onChange={e => setForm(f => ({ ...f, broker: e.target.value }))}
-                    placeholder="The Trading Pit / Bitget"
+                    placeholder="Broker / exchange"
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
                   />
                 </div>
@@ -327,7 +327,7 @@ export default function SettingsPage() {
                     type="number"
                     value={form.initial_balance}
                     onChange={e => setForm(f => ({ ...f, initial_balance: e.target.value }))}
-                    placeholder="100000"
+                    placeholder="10000"
                     className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
                   />
                 </div>
@@ -382,10 +382,10 @@ export default function SettingsPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-2.5">
                           {[
-                            { label: "Name *", key: "name", placeholder: "TTP $100K — Fase 2", mono: false },
-                            { label: "Broker / Exchange", key: "broker", placeholder: "The Trading Pit", mono: false },
+                            { label: "Name *", key: "name", placeholder: "My funded account", mono: false },
+                            { label: "Broker / Exchange", key: "broker", placeholder: "Broker / exchange", mono: false },
                             { label: "Account number", key: "account_number", placeholder: "570416698", mono: true },
-                            { label: "Initial balance *", key: "initial_balance", placeholder: "100000", mono: true },
+                            { label: "Initial balance *", key: "initial_balance", placeholder: "10000", mono: true },
                           ].map(({ label, key, placeholder, mono }) => (
                             <div key={key}>
                               <label className="text-[9px] text-text-disabled block mb-1">{label}</label>

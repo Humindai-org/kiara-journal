@@ -37,8 +37,11 @@ export default function LoginPage() {
     setResetLoading(true);
     setError("");
     const supabase = createClient();
+    // Return to whatever origin the user is actually on — production, a preview
+    // deploy, or localhost. Each origin must be listed under
+    // Supabase → Authentication → URL Configuration → Redirect URLs.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://kiara-journal.vercel.app/update-password",
+      redirectTo: `${window.location.origin}/update-password`,
     });
     setResetLoading(false);
     if (error) { setError(error.message); return; }
@@ -53,8 +56,8 @@ export default function LoginPage() {
           <TrendingUp className="size-5 text-bg" />
         </div>
         <div className="leading-tight">
-          <p className="text-text-primary font-medium">Trading Kiara</p>
-          <p className="text-text-secondary text-xs">Journal</p>
+          <p className="text-text-primary font-medium">Trading Journal</p>
+          <p className="text-text-secondary text-xs">Sign in</p>
         </div>
       </div>
 
@@ -62,7 +65,7 @@ export default function LoginPage() {
       <div className="card p-6">
         <h1 className="text-text-primary font-medium mb-1">Sign in</h1>
         <p className="text-text-secondary text-xs mb-6">
-          Funded account TTP CFD Prime $100K
+          Track your trades, risk and discipline in one place
         </p>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -128,7 +131,7 @@ export default function LoginPage() {
       </div>
 
       <p className="text-center text-xs text-text-disabled mt-4">
-        Trading Kiara Journal · Phase 2
+        Trading Journal
       </p>
     </div>
   );
