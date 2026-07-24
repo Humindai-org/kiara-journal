@@ -7,6 +7,7 @@ import { Plus, RefreshCw, Check, X, Zap, Unplug, RotateCw, Pencil, Trash2 } from
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
+import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
 import type { AccountType } from "@/types/supabase";
@@ -56,6 +57,7 @@ export default function SettingsPage() {
   const [accounts, setLocal]  = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding]   = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [form, setForm]       = useState({ ...EMPTY_FORM });
   const [recalcId, setRecalcId] = useState<string | null>(null);
@@ -254,7 +256,18 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <>
+      {wizardOpen && (
+        <OnboardingWizard
+          mode="add-account"
+          onCancel={() => setWizardOpen(false)}
+          onComplete={async () => {
+            setWizardOpen(false);
+            await load();
+          }}
+        />
+      )}
+      <div className="flex flex-col h-full overflow-hidden">
       <TopBar title="Accounts" />
 
       <div className="flex-1 overflow-y-auto">
@@ -269,11 +282,11 @@ export default function SettingsPage() {
               </p>
             </div>
             <button
-              onClick={() => setAdding(v => !v)}
+              onClick={() => setWizardOpen(true)}
               className="btn-action flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs"
             >
-              {adding ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
-              {adding ? "Cancel" : "New account"}
+              <Plus className="size-3.5" />
+              New account
             </button>
           </div>
 
@@ -631,6 +644,7 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
