@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
+import { computeFloor, computeTargetDollar, type LimitMode } from "@/components/trading/RiskCalculator";
 import type { AccountType } from "@/types/supabase";
 
 // ─── Shared styling ──────────────────────────────────────────────
@@ -35,7 +36,7 @@ const labelClass = "text-xs text-text-secondary block mb-1.5";
 
 type AccountKind = "FUNDED" | "PERSONAL" | "DEMO";
 type Currency = "USD" | "EUR" | "USDT";
-type DdMode = "percent" | "amount";
+type DdMode = LimitMode;
 type Instrument = "FOREX" | "METALS" | "INDICES" | "STOCKS" | "CRYPTO";
 
 const TOTAL_STEPS = 6;
@@ -88,7 +89,9 @@ interface WizardState {
   dailyDdPercent: string;
   dailyDdAmount: string;
   ddWarningPercent: string;
-  profitTarget: string;
+  profitTargetMode: DdMode;
+  profitTargetPercent: string;
+  profitTargetAmount: string;
 
   riskPerTradePercent: string;
   dailyStopUsd: string;
@@ -121,7 +124,9 @@ const INITIAL_STATE: WizardState = {
   dailyDdPercent: "",
   dailyDdAmount: "",
   ddWarningPercent: "20",
-  profitTarget: "",
+  profitTargetMode: "percent",
+  profitTargetPercent: "",
+  profitTargetAmount: "",
 
   riskPerTradePercent: "",
   dailyStopUsd: "",
@@ -147,17 +152,6 @@ function fmtMoney(n: number, currency: string) {
   return `${currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function computeFloor(balance: number | null, mode: DdMode, percent: string, amount: string): number | null {
-  if (balance == null) return null;
-  if (mode === "percent") {
-    const p = toNumber(percent);
-    if (p == null) return null;
-    return balance - (balance * p) / 100;
-  }
-  const a = toNumber(amount);
-  if (a == null) return null;
-  return balance - a;
-}
 
 // ─── Small building blocks ───────────────────────────────────────
 
@@ -277,7 +271,8 @@ export default function OnboardingWizard({ mode, onComplete, onCancel }: Onboard
       dailyDdEnabled: true,
       dailyDdMode: "percent",
       dailyDdPercent: preset.dailyDdPercent,
-      profitTarget: f.profitTarget || preset.profitTargetPercent,
+      profitTargetMode: "percent",
+      profitTargetPercent: f.profitTargetPercent || preset.profitTargetPercent,
     }));
   }
 
@@ -288,6 +283,7 @@ export default function OnboardingWizard({ mode, onComplete, onCancel }: Onboard
     : null;
   const riskPercent = toNumber(form.riskPerTradePercent);
   const riskDollar = balance != null && riskPercent != null ? (balance * riskPercent) / 100 : null;
+  const profitTargetDollar = computeTargetDollar(balance, form.profitTargetMode, form.profitTargetPercent, form.profitTargetAmount);
 
   const finalName = form.kind === "FUNDED" && form.phase.trim() ? `${form.name.trim()} (${form.phase.trim()})` : form.name.trim();
 
@@ -348,7 +344,7 @@ export default function OnboardingWizard({ mode, onComplete, onCancel }: Onboard
       const db = supabase as any;
 
       const dailyStop = toNumber(form.dailyStopUsd);
-      const profitTarget = toNumber(form.profitTarget);
+      const profitTarget = computeTargetDollar(balance, form.profitTargetMode, form.profitTargetPercent, form.profitTargetAmount);
       const ddWarningPercent = toNumber(form.ddWarningPercent) ?? 20;
       const maxTradesPerDay = form.maxTradesPerDay.trim() ? parseInt(form.maxTradesPerDay, 10) : null;
       const maxConsecutiveLosses = form.maxConsecutiveLosses.trim() ? parseInt(form.maxConsecutiveLosses, 10) : null;
@@ -441,7 +437,7 @@ export default function OnboardingWizard({ mode, onComplete, onCancel }: Onboard
           {step === 1 && <StepKind form={form} update={update} />}
           {step === 2 && <StepAccount form={form} update={update} />}
           {step === 3 && (
-            <StepLimits form={form} update={update} balance={balance} totalFloor={totalFloor} dailyFloor={dailyFloor} />
+            <StepLimits form={form} update={update} balance={balance} totalFloor={totalFloor} dailyFloor={dailyFloor} profitTargetDollar={profitTargetDollar} />
           )}
           {step === 4 && <StepRisk form={form} update={update} balance={balance} riskDollar={riskDollar} />}
           {step === 5 && <StepInstruments form={form} toggleInstrument={toggleInstrument} />}
@@ -453,6 +449,7 @@ export default function OnboardingWizard({ mode, onComplete, onCancel }: Onboard
               totalFloor={totalFloor}
               dailyFloor={dailyFloor}
               riskDollar={riskDollar}
+              profitTargetDollar={profitTargetDollar}
             />
           )}
 
@@ -645,12 +642,14 @@ function StepLimits({
   balance,
   totalFloor,
   dailyFloor,
+  profitTargetDollar,
 }: {
   form: WizardState;
   update: <K extends keyof WizardState>(k: K, v: WizardState[K]) => void;
   balance: number | null;
   totalFloor: number | null;
   dailyFloor: number | null;
+  profitTargetDollar: number | null;
 }) {
   const isPersonal = form.kind === "PERSONAL";
   const subtitle = isPersonal
@@ -736,14 +735,24 @@ function StepLimits({
 
         {/* Profit target */}
         <div>
-          <label className={labelClass}>Profit target (optional)</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className={cn(labelClass, "mb-0")}>Profit target (optional)</label>
+            <DdModeToggle mode={form.profitTargetMode} onChange={(m) => update("profitTargetMode", m)} />
+          </div>
           <input
             type="number"
             min={0}
-            value={form.profitTarget}
-            onChange={(e) => update("profitTarget", e.target.value)}
-            placeholder={isPersonal ? "No target" : "e.g. 8"}
+            value={form.profitTargetMode === "percent" ? form.profitTargetPercent : form.profitTargetAmount}
+            onChange={(e) => update(form.profitTargetMode === "percent" ? "profitTargetPercent" : "profitTargetAmount", e.target.value)}
+            placeholder={form.profitTargetMode === "percent" ? (isPersonal ? "No target" : "e.g. 8") : "e.g. 8000"}
             className={cn(inputClass, "font-mono")}
+          />
+          <FloorHint
+            text={
+              balance != null && profitTargetDollar != null
+                ? `Target: ${fmtMoney(profitTargetDollar, form.currency)} in profit.`
+                : null
+            }
           />
         </div>
       </div>
@@ -918,6 +927,7 @@ function StepReview({
   totalFloor,
   dailyFloor,
   riskDollar,
+  profitTargetDollar,
 }: {
   form: WizardState;
   finalName: string;
@@ -925,9 +935,9 @@ function StepReview({
   totalFloor: number | null;
   dailyFloor: number | null;
   riskDollar: number | null;
+  profitTargetDollar: number | null;
 }) {
   const dailyStop = toNumber(form.dailyStopUsd);
-  const profitTarget = toNumber(form.profitTarget);
 
   return (
     <div>
@@ -939,7 +949,7 @@ function StepReview({
         <ReviewRow label="Starting balance" value={balance != null ? fmtMoney(balance, form.currency) : "—"} />
         <ReviewRow label="Total drawdown floor" value={totalFloor != null ? fmtMoney(totalFloor, form.currency) : "Not set"} />
         <ReviewRow label="Daily drawdown floor" value={dailyFloor != null ? fmtMoney(dailyFloor, form.currency) : "Not set"} />
-        <ReviewRow label="Profit target" value={profitTarget != null ? `${profitTarget}%` : "No target"} />
+        <ReviewRow label="Profit target" value={profitTargetDollar != null && balance != null ? fmtMoney(profitTargetDollar, form.currency) : "No target"} />
         <ReviewRow
           label="Risk per trade"
           value={riskDollar != null && balance != null ? `${form.riskPerTradePercent}% (${fmtMoney(riskDollar, form.currency)})` : "—"}

@@ -1,23 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Lock, AlertTriangle, ChevronDown, Loader2, RefreshCw, CheckCircle } from "lucide-react";
+import { Lock, AlertTriangle, Loader2, RefreshCw, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   calcLots,
   calcRR,
   getGradeColor,
   riskForGrade,
+  hasPreciseSizing,
   DEFAULT_RISK_PERCENT,
+  FOREX_MAJORS,
   type SetupGrade,
 } from "./RiskCalculator";
 import RiskGuardianModal from "./RiskGuardianModal";
 import type { GuardianResult } from "./RiskGuardianModal";
-
-const FOREX_INSTRUMENTS = [
-  "EURUSD", "GBPUSD", "USDJPY", "XAUUSD",
-  "AUDUSD", "USDCAD", "USDCHF", "EURJPY", "GBPJPY",
-];
+import InstrumentCombobox from "./InstrumentCombobox";
 
 type Direction = "LONG" | "SHORT";
 type OrderType = "MARKET" | "LIMIT" | "STOP";
@@ -46,7 +44,7 @@ export default function OrderForm({
   onTradeLogged,
   balance = 0,
   riskPercent = DEFAULT_RISK_PERCENT,
-  instruments = FOREX_INSTRUMENTS,
+  instruments = FOREX_MAJORS,
 }: OrderFormProps) {
   const [instrument, setInstrument] = useState(instruments[0] ?? "EURUSD");
   const [direction, setDirection] = useState<Direction>("LONG");
@@ -283,18 +281,12 @@ export default function OrderForm({
           <>
             {/* Instrument + Grade */}
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <select
-                  value={instrument}
-                  onChange={(e) => setInstrument(e.target.value)}
-                  className="w-full appearance-none bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-                >
-                  {instruments.map((i) => (
-                    <option key={i} value={i}>{i}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3 text-text-secondary pointer-events-none" />
-              </div>
+              <InstrumentCombobox
+                value={instrument}
+                onChange={setInstrument}
+                options={instruments}
+                isImprecise={(s) => !hasPreciseSizing(s)}
+              />
               <div className="relative">
                 <select
                   value={grade}
@@ -422,6 +414,11 @@ export default function OrderForm({
                   <span className="text-xs text-text-secondary">SL Pips</span>
                   <span className="text-sm font-mono text-text-primary">{calc.slPips.toFixed(1)}</span>
                 </div>
+                {!hasPreciseSizing(instrument) && (
+                  <p className="text-[10px] text-warning pt-1 border-t border-border">
+                    ≈ Approximate sizing — {instrument} isn&apos;t in the verified pip table. Double-check lot size manually.
+                  </p>
+                )}
               </div>
             )}
 

@@ -17,7 +17,7 @@ import PreMarketModal, {
   type PreMarketSession,
 } from "@/components/trading/PreMarketModal";
 import { createClient } from "@/lib/supabase/client";
-import { isCrypto } from "@/components/trading/RiskCalculator";
+import { isCrypto, instrumentsForClasses, FOREX_UNIVERSE, METALS_UNIVERSE, CRYPTO_UNIVERSE } from "@/components/trading/RiskCalculator";
 import { useAccountStore } from "@/store/account";
 
 type Plan = {
@@ -28,20 +28,10 @@ type Plan = {
   risk_per_trade_percent: number | null;
 };
 
-const FOREX_INSTRUMENTS = [
-  "EURUSD", "GBPUSD", "USDJPY", "XAUUSD",
-  "AUDUSD", "USDCAD", "USDCHF", "EURJPY", "GBPJPY",
-];
+// Fallback for accounts created before the onboarding wizard existed (no
+// `instruments` column set yet) — forex + metals is the safest default.
+const LEGACY_DEFAULT_INSTRUMENTS = [...FOREX_UNIVERSE, ...METALS_UNIVERSE];
 
-const CRYPTO_INSTRUMENTS = [
-  "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT",
-  "BNBUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT",
-];
-
-// Exchanges like Bitget are multi-asset — the same account trades crypto, forex
-// and equities. So an exchange account gets the union, not a crypto-only list.
-// TODO(0012): replace this with the instrument set the user picks in the
-// onboarding wizard and stores on the account.
 const EXCHANGE_TYPES = ["BITGET", "BYBIT", "BINANCE"];
 
 type WarningLevel = "safe" | "caution" | "danger" | "breach";
@@ -96,9 +86,13 @@ export default function TradingPage() {
 
   const account = accounts.find((a) => a.id === activeAccountId) ?? null;
   const isExchangeAccount = EXCHANGE_TYPES.includes(account?.type ?? "");
-  const instruments = isExchangeAccount
-    ? [...CRYPTO_INSTRUMENTS, ...FOREX_INSTRUMENTS]
-    : FOREX_INSTRUMENTS;
+  // `instruments` lives on the row (0012) but isn't in the generated types yet.
+  const accountInstrumentClasses = (account as unknown as { instruments?: string[] } | null)?.instruments;
+  const instruments = accountInstrumentClasses?.length
+    ? instrumentsForClasses(accountInstrumentClasses)
+    : isExchangeAccount
+    ? [...CRYPTO_UNIVERSE, ...LEGACY_DEFAULT_INSTRUMENTS]
+    : LEGACY_DEFAULT_INSTRUMENTS;
   const exchangePrefix = account?.type === "BITGET" ? "BITGET"
     : account?.type === "BYBIT" ? "BYBIT"
     : "BINANCE";

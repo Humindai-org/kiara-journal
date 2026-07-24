@@ -10,7 +10,18 @@ import TopBar from "@/components/layout/TopBar";
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
+import { computeFloor, computeTargetDollar, type LimitMode } from "@/components/trading/RiskCalculator";
 import type { AccountType } from "@/types/supabase";
+
+type InstrumentClass = "FOREX" | "METALS" | "INDICES" | "STOCKS" | "CRYPTO";
+
+const INSTRUMENT_CLASSES: { value: InstrumentClass; label: string }[] = [
+  { value: "FOREX", label: "Forex" },
+  { value: "METALS", label: "Metals" },
+  { value: "INDICES", label: "Indices" },
+  { value: "STOCKS", label: "Stocks" },
+  { value: "CRYPTO", label: "Crypto" },
+];
 
 type Account = {
   id: string;
@@ -26,6 +37,31 @@ type Account = {
   webhook_token: string;
   mt5_server: string | null;
   metaapi_account_id: string | null;
+  // Set by the onboarding wizard (migration 0012) — optional because rows
+  // created before it exists won't have these.
+  total_dd_floor: number | null;
+  daily_dd_floor: number | null;
+  personal_daily_stop_usd: number | null;
+  profit_target: number | null;
+  dd_warning_percent: number | null;
+  instruments: InstrumentClass[] | null;
+};
+
+const EMPTY_LIMITS = {
+  totalDdMode: "amount" as LimitMode,
+  totalDdPercent: "",
+  totalDdAmount: "",
+  dailyDdEnabled: false,
+  dailyDdMode: "amount" as LimitMode,
+  dailyDdPercent: "",
+  dailyDdAmount: "",
+  ddWarningPercent: "20",
+  profitTargetMode: "amount" as LimitMode,
+  profitTargetPercent: "",
+  profitTargetAmount: "",
+  personalDailyStopUsd: "",
+  riskPerTradePercent: "",
+  instruments: [] as InstrumentClass[],
 };
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; color: string }[] = [
@@ -38,16 +74,50 @@ const ACCOUNT_TYPES: { value: AccountType; label: string; color: string }[] = [
 
 const CURRENCIES = ["USD", "EUR", "USDT"];
 
-const EMPTY_FORM = {
-  name: "", type: "MT5" as AccountType, broker: "",
-  account_number: "", currency: "USD", initial_balance: "",
-};
-
 function typeLabel(type: AccountType) {
   return ACCOUNT_TYPES.find(t => t.value === type)?.label ?? type;
 }
 function typeColor(type: AccountType) {
   return ACCOUNT_TYPES.find(t => t.value === type)?.color ?? "text-text-secondary";
+}
+
+/** A labeled input with a %/$ mode toggle, for editing a drawdown or profit-target field. */
+function EditLimitField({ label, mode, onModeChange, value, onChange }: {
+  label: string;
+  mode: LimitMode;
+  onModeChange: (m: LimitMode) => void;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        {label && <label className="text-[9px] text-text-disabled">{label}</label>}
+        <div className="inline-flex rounded border border-border-light bg-surface-2 p-0.5 text-[9px] ml-auto">
+          {(["percent", "amount"] as LimitMode[]).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onModeChange(m)}
+              className={cn(
+                "px-1.5 py-0.5 rounded transition-colors",
+                mode === m ? "bg-accent text-bg font-medium" : "text-text-disabled hover:text-text-secondary"
+              )}
+            >
+              {m === "percent" ? "%" : "$"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <input
+        type="number"
+        min={0}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-accent"
+      />
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -56,16 +126,22 @@ export default function SettingsPage() {
 
   const [accounts, setLocal]  = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding]   = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [form, setForm]       = useState({ ...EMPTY_FORM });
   const [recalcId, setRecalcId] = useState<string | null>(null);
+
+  // The active plan's risk-per-trade is shared across all accounts (the plan
+  // is per-user, not per-account) — fetched once, prefilled into whichever
+  // account's edit form is open.
+  const [activeRiskPercent, setActiveRiskPercent] = useState<number | null>(null);
 
   // Edit state
   const [editingId,   setEditingId]   = useState<string | null>(null);
-  const [editForm,    setEditForm]    = useState({ name: "", type: "MT5" as AccountType, broker: "", account_number: "", currency: "USD", initial_balance: "" });
+  const [editForm,    setEditForm]    = useState({
+    name: "", type: "MT5" as AccountType, broker: "", account_number: "", currency: "USD", initial_balance: "",
+    ...EMPTY_LIMITS,
+  });
   const [editSaving,  setEditSaving]  = useState(false);
+  const [showLimits,  setShowLimits]  = useState(false);
 
   // Delete state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -81,38 +157,28 @@ export default function SettingsPage() {
   async function load() {
     setLoading(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
-      .from("accounts").select("*").order("created_at");
+    const db = supabase as any;
+    const [{ data }, { data: { user } }] = await Promise.all([
+      db.from("accounts").select("*").order("created_at"),
+      supabase.auth.getUser(),
+    ]);
     const rows = (data as Account[]) ?? [];
     setLocal(rows);
     setAccounts(rows as never[]);
+
+    if (user) {
+      const { data: plan } = await db
+        .from("plans")
+        .select("risk_per_trade_percent")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .maybeSingle();
+      setActiveRiskPercent(plan?.risk_per_trade_percent ?? null);
+    }
     setLoading(false);
   }
 
   useEffect(() => { load(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleAdd() {
-    if (!form.name || !form.initial_balance) {
-      toast.error("Name and initial balance are required");
-      return;
-    }
-    setSaving(true);
-    const res = await fetch("/api/accounts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        initial_balance: parseFloat(form.initial_balance),
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) { toast.error(json.error); setSaving(false); return; }
-    toast.success("Account created");
-    setForm({ ...EMPTY_FORM });
-    setAdding(false);
-    setSaving(false);
-    await load();
-  }
 
   async function handleRecalculate(accountId: string) {
     setRecalcId(accountId);
@@ -144,6 +210,13 @@ export default function SettingsPage() {
   function startEdit(acc: Account) {
     setDeleteConfirmId(null);
     setEditingId(acc.id);
+    setShowLimits(false);
+
+    // Stored floors are $ amounts on the balance; show them as the "how much
+    // you're willing to lose" amount the wizard uses, not the raw floor.
+    const totalDdAmount = acc.total_dd_floor != null ? acc.initial_balance - acc.total_dd_floor : null;
+    const dailyDdAmount = acc.daily_dd_floor != null ? acc.initial_balance - acc.daily_dd_floor : null;
+
     setEditForm({
       name:            acc.name,
       type:            acc.type,
@@ -151,7 +224,29 @@ export default function SettingsPage() {
       account_number:  acc.account_number ?? "",
       currency:        acc.currency,
       initial_balance: String(acc.initial_balance),
+
+      totalDdMode:     "amount",
+      totalDdPercent:  "",
+      totalDdAmount:   totalDdAmount != null ? String(totalDdAmount) : "",
+      dailyDdEnabled:  acc.daily_dd_floor != null,
+      dailyDdMode:     "amount",
+      dailyDdPercent:  "",
+      dailyDdAmount:   dailyDdAmount != null ? String(dailyDdAmount) : "",
+      ddWarningPercent: acc.dd_warning_percent != null ? String(acc.dd_warning_percent) : "20",
+      profitTargetMode: "amount",
+      profitTargetPercent: "",
+      profitTargetAmount: acc.profit_target != null ? String(acc.profit_target) : "",
+      personalDailyStopUsd: acc.personal_daily_stop_usd != null ? String(acc.personal_daily_stop_usd) : "",
+      riskPerTradePercent: activeRiskPercent != null ? String(activeRiskPercent) : "",
+      instruments: acc.instruments ?? [],
     });
+  }
+
+  function toggleEditInstrument(v: InstrumentClass) {
+    setEditForm(f => ({
+      ...f,
+      instruments: f.instruments.includes(v) ? f.instruments.filter(i => i !== v) : [...f.instruments, v],
+    }));
   }
 
   async function handleSaveEdit() {
@@ -160,6 +255,16 @@ export default function SettingsPage() {
       return;
     }
     setEditSaving(true);
+
+    const balance = parseFloat(editForm.initial_balance);
+    const totalDdFloor = computeFloor(balance, editForm.totalDdMode, editForm.totalDdPercent, editForm.totalDdAmount);
+    const dailyDdFloor = editForm.dailyDdEnabled
+      ? computeFloor(balance, editForm.dailyDdMode, editForm.dailyDdPercent, editForm.dailyDdAmount)
+      : null;
+    const profitTarget = computeTargetDollar(balance, editForm.profitTargetMode, editForm.profitTargetPercent, editForm.profitTargetAmount);
+    const ddWarningPercent = editForm.ddWarningPercent.trim() ? parseFloat(editForm.ddWarningPercent) : null;
+    const personalDailyStop = editForm.personalDailyStopUsd.trim() ? parseFloat(editForm.personalDailyStopUsd) : null;
+
     const res = await fetch("/api/accounts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -170,12 +275,36 @@ export default function SettingsPage() {
         broker:          editForm.broker,
         account_number:  editForm.account_number || null,
         currency:        editForm.currency,
-        initial_balance: parseFloat(editForm.initial_balance),
+        initial_balance: balance,
+        total_dd_floor:  totalDdFloor,
+        daily_dd_floor:  dailyDdFloor,
+        dd_warning_percent: ddWarningPercent,
+        profit_target:   profitTarget,
+        personal_daily_stop_usd: personalDailyStop,
+        instruments:     editForm.instruments,
       }),
     });
     const json = await res.json();
-    if (!res.ok) { toast.error(json.error ?? "Failed to update"); }
-    else { toast.success("Account updated"); setEditingId(null); await load(); }
+    if (!res.ok) { toast.error(json.error ?? "Failed to update"); setEditSaving(false); return; }
+
+    // Risk per trade lives on the active plan, shared across accounts — write
+    // it separately, and only if it actually changed.
+    const newRiskPercent = editForm.riskPerTradePercent.trim() ? parseFloat(editForm.riskPerTradePercent) : null;
+    if (newRiskPercent != null && newRiskPercent !== activeRiskPercent) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from("plans")
+          .update({ risk_per_trade_percent: newRiskPercent })
+          .eq("user_id", user.id)
+          .eq("is_active", true);
+      }
+    }
+
+    toast.success("Account updated");
+    setEditingId(null);
+    await load();
     setEditSaving(false);
   }
 
@@ -290,81 +419,6 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {/* Add account form */}
-          {adding && (
-            <div className="card p-4 space-y-4 border-accent/30">
-              <p className="text-xs font-medium text-accent uppercase tracking-wider">New account</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="My funded account"
-                    className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Type *</label>
-                  <select
-                    value={form.type}
-                    onChange={e => setForm(f => ({ ...f, type: e.target.value as AccountType }))}
-                    className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-                  >
-                    {ACCOUNT_TYPES.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Broker / Exchange</label>
-                  <input
-                    value={form.broker}
-                    onChange={e => setForm(f => ({ ...f, broker: e.target.value }))}
-                    placeholder="Broker / exchange"
-                    className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Account number</label>
-                  <input
-                    value={form.account_number}
-                    onChange={e => setForm(f => ({ ...f, account_number: e.target.value }))}
-                    placeholder="570416698"
-                    className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Initial balance *</label>
-                  <input
-                    type="number"
-                    value={form.initial_balance}
-                    onChange={e => setForm(f => ({ ...f, initial_balance: e.target.value }))}
-                    placeholder="10000"
-                    className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-text-disabled block mb-1.5">Currency</label>
-                  <select
-                    value={form.currency}
-                    onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
-                    className="w-full bg-surface-hi border border-border-light rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-                  >
-                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              <button
-                onClick={handleAdd}
-                disabled={saving}
-                className="btn-action w-full py-2.5 rounded-lg text-sm"
-              >
-                {saving ? "Saving…" : "Create account"}
-              </button>
-            </div>
-          )}
-
           {/* Account list */}
           {loading ? (
             <div className="text-center py-12 text-text-disabled text-sm">Loading…</div>
@@ -435,6 +489,113 @@ export default function SettingsPage() {
                             </select>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowLimits(v => !v)}
+                          className="text-[10px] text-accent hover:text-accent-dim transition-colors"
+                        >
+                          {showLimits ? "Hide risk & limits ▴" : "Risk & limits ▾"}
+                        </button>
+
+                        {showLimits && (
+                          <div className="space-y-3 border-t border-border pt-3">
+                            <EditLimitField
+                              label="Total drawdown — how much you can lose"
+                              mode={editForm.totalDdMode}
+                              onModeChange={m => setEditForm(f => ({ ...f, totalDdMode: m }))}
+                              value={editForm.totalDdMode === "percent" ? editForm.totalDdPercent : editForm.totalDdAmount}
+                              onChange={v => setEditForm(f => ({ ...f, [f.totalDdMode === "percent" ? "totalDdPercent" : "totalDdAmount"]: v }))}
+                            />
+
+                            <div>
+                              <label className="flex items-center gap-1.5 text-[9px] text-text-disabled mb-1">
+                                <input
+                                  type="checkbox"
+                                  checked={editForm.dailyDdEnabled}
+                                  onChange={e => setEditForm(f => ({ ...f, dailyDdEnabled: e.target.checked }))}
+                                  className="accent-accent"
+                                />
+                                Daily drawdown limit
+                              </label>
+                              {editForm.dailyDdEnabled && (
+                                <EditLimitField
+                                  label=""
+                                  mode={editForm.dailyDdMode}
+                                  onModeChange={m => setEditForm(f => ({ ...f, dailyDdMode: m }))}
+                                  value={editForm.dailyDdMode === "percent" ? editForm.dailyDdPercent : editForm.dailyDdAmount}
+                                  onChange={v => setEditForm(f => ({ ...f, [f.dailyDdMode === "percent" ? "dailyDdPercent" : "dailyDdAmount"]: v }))}
+                                />
+                              )}
+                            </div>
+
+                            <EditLimitField
+                              label="Profit target (optional)"
+                              mode={editForm.profitTargetMode}
+                              onModeChange={m => setEditForm(f => ({ ...f, profitTargetMode: m }))}
+                              value={editForm.profitTargetMode === "percent" ? editForm.profitTargetPercent : editForm.profitTargetAmount}
+                              onChange={v => setEditForm(f => ({ ...f, [f.profitTargetMode === "percent" ? "profitTargetPercent" : "profitTargetAmount"]: v }))}
+                            />
+
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="text-[9px] text-text-disabled block mb-1">DD warning threshold (%)</label>
+                                <input
+                                  type="number" min={0} max={100}
+                                  value={editForm.ddWarningPercent}
+                                  onChange={e => setEditForm(f => ({ ...f, ddWarningPercent: e.target.value }))}
+                                  className="w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-accent"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] text-text-disabled block mb-1">Daily stop ($)</label>
+                                <input
+                                  type="number" min={0}
+                                  value={editForm.personalDailyStopUsd}
+                                  onChange={e => setEditForm(f => ({ ...f, personalDailyStopUsd: e.target.value }))}
+                                  className="w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-accent"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-[9px] text-text-disabled block mb-1">
+                                Risk per trade (%) — applies to all your accounts, set on your active plan
+                              </label>
+                              <input
+                                type="number" min={0} step={0.1}
+                                value={editForm.riskPerTradePercent}
+                                onChange={e => setEditForm(f => ({ ...f, riskPerTradePercent: e.target.value }))}
+                                className="w-full bg-surface-2 border border-border-light rounded px-2 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-accent"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[9px] text-text-disabled block mb-1.5">Instruments</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {INSTRUMENT_CLASSES.map(({ value, label }) => {
+                                  const active = editForm.instruments.includes(value);
+                                  return (
+                                    <button
+                                      key={value}
+                                      type="button"
+                                      onClick={() => toggleEditInstrument(value)}
+                                      className={cn(
+                                        "px-2 py-1 rounded-full text-[10px] border transition-colors",
+                                        active
+                                          ? "border-accent bg-accent-glow text-text-primary"
+                                          : "border-border-light text-text-disabled hover:text-text-secondary"
+                                      )}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         <button
                           onClick={handleSaveEdit}
                           disabled={editSaving}
