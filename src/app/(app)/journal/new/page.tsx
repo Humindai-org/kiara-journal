@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import { createClient } from "@/lib/supabase/client";
+import { hasPreciseSizing } from "@/components/trading/RiskCalculator";
 
 const INSTRUMENTS = ["EURUSD","GBPUSD","USDJPY","XAUUSD","AUDUSD","USDCAD","USDCHF","EURJPY","GBPJPY","NAS100","SP500"];
 const SESSIONS = ["LONDON","NEW_YORK","OVERLAP","TOKYO"] as const;
@@ -18,14 +19,28 @@ function toLocalDateTimeValue(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// True only for standard 6-letter forex pairs (both halves real currency codes).
+// Indices (GER40, NAS100, US30...), stocks, and unlisted symbols are quoted in
+// whole points, not fractional forex "pips" — treating them as forex here was
+// the root cause of trades like GER40 showing -142300 "pips" (14.23 points
+// divided by the forex pip size of 0.0001 instead of being read as 14.23 points).
+function isForexPair(instrument: string): boolean {
+  const codes = ["EUR", "GBP", "USD", "AUD", "NZD", "CAD", "CHF", "JPY"];
+  if (instrument.length !== 6) return false;
+  return codes.includes(instrument.slice(0, 3)) && codes.includes(instrument.slice(3));
+}
+
 function calcPips(instrument: string, entry: number, exit: number, direction: "LONG" | "SHORT") {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
-  const pipSize = instrument === "XAUUSD" ? 0.1 : instrument.includes("JPY") ? 0.01 : 0.0001;
-  return diff / pipSize;
+  const inst = instrument.toUpperCase();
+  if (inst === "XAUUSD") return diff / 0.1;
+  if (isForexPair(inst)) return diff / (inst.includes("JPY") ? 0.01 : 0.0001);
+  return diff; // indices/stocks/CFDs: 1 point = 1 pip
 }
 
 function calcPnL(instrument: string, lots: number, pips: number) {
-  const pipValue = instrument === "XAUUSD" ? 10 : instrument.includes("JPY") ? 9.1 : 10;
+  const inst = instrument.toUpperCase();
+  const pipValue = inst === "XAUUSD" ? 10 : inst.includes("JPY") ? 9.1 : 10;
   return lots * pips * pipValue;
 }
 
@@ -70,8 +85,8 @@ export default function NewTradePage() {
     const lots = parseFloat(lotSize);
     if (!e || !x || !lots) return null;
     const pips = calcPips(instrument, e, x, direction);
-    const pnl = calcPnL(instrument, lots, pips);
-    return { pips: pips.toFixed(1), pnl: pnl.toFixed(2) };
+    const pnl = hasPreciseSizing(instrument) ? calcPnL(instrument, lots, pips) : null;
+    return { pips: pips.toFixed(1), pnl: pnl != null ? pnl.toFixed(2) : null };
   }, [entryPrice, exitPrice, lotSize, instrument, direction]);
 
   // Auto-calculate R
@@ -103,7 +118,7 @@ export default function NewTradePage() {
       let returnR = null;
       let durationMin = null;
 
-      if (x) {
+      if (x && hasPreciseSizing(instrument)) {
         const pips = calcPips(instrument, e, x, direction);
         netPnl = parseFloat(calcPnL(instrument, lots, pips).toFixed(2));
       }
@@ -215,10 +230,15 @@ export default function NewTradePage() {
             {preview && (
               <div className={cn(
                 "flex items-center justify-between px-3 py-2 rounded-lg text-sm font-mono",
-                parseFloat(preview.pnl) >= 0 ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"
+                preview.pnl == null ? "bg-surface-hi text-text-secondary"
+                  : parseFloat(preview.pnl) >= 0 ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"
               )}>
                 <span>{preview.pips} pips</span>
-                <span>{parseFloat(preview.pnl) >= 0 ? "+" : ""}{preview.pnl} USD</span>
+                <span>
+                  {preview.pnl == null
+                    ? "$ unknown — no verified contract spec for this instrument"
+                    : `${parseFloat(preview.pnl) >= 0 ? "+" : ""}${preview.pnl} USD`}
+                </span>
                 {rPreview && <span>{parseFloat(rPreview) >= 0 ? "+" : ""}{rPreview}R</span>}
               </div>
             )}
