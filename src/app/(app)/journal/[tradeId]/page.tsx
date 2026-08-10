@@ -16,6 +16,7 @@ import AccountSelector from "@/components/layout/AccountSelector";
 import { createClient } from "@/lib/supabase/client";
 import EmotionSelector from "@/components/journal/EmotionSelector";
 import ConfluenceChecklist from "@/components/journal/ConfluenceChecklist";
+import { hasPreciseSizing } from "@/components/trading/RiskCalculator";
 
 const INSTRUMENTS = ["EURUSD","GBPUSD","USDJPY","XAUUSD","AUDUSD","USDCAD","USDCHF","EURJPY","GBPJPY","NAS100","SP500"];
 const SESSIONS = ["LONDON","NEW_YORK","OVERLAP","TOKYO"] as const;
@@ -54,13 +55,26 @@ function calcControlScore(
   return Math.min(s, 10);
 }
 
+// True only for standard 6-letter forex pairs (both halves real currency codes).
+// Indices (GER40, NAS100, US30...), stocks, and unlisted symbols are quoted in
+// whole points, not fractional forex "pips" — treating them as forex here was
+// the root cause of trades like GER40 showing -142300 "pips" (14.23 points
+// divided by the forex pip size of 0.0001 instead of being read as 14.23 points).
+function isForexPair(instrument: string): boolean {
+  const codes = ["EUR", "GBP", "USD", "AUD", "NZD", "CAD", "CHF", "JPY"];
+  if (instrument.length !== 6) return false;
+  return codes.includes(instrument.slice(0, 3)) && codes.includes(instrument.slice(3));
+}
 function calcPips(instrument: string, entry: number, exit: number, direction: "LONG" | "SHORT") {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
-  const pipSize = instrument === "XAUUSD" ? 0.1 : instrument.includes("JPY") ? 0.01 : 0.0001;
-  return diff / pipSize;
+  const inst = instrument.toUpperCase();
+  if (inst === "XAUUSD") return diff / 0.1;
+  if (isForexPair(inst)) return diff / (inst.includes("JPY") ? 0.01 : 0.0001);
+  return diff; // indices/stocks/CFDs: 1 point = 1 pip
 }
 function calcPnL(instrument: string, lots: number, pips: number) {
-  const pipValue = instrument === "XAUUSD" ? 10 : instrument.includes("JPY") ? 9.1 : 10;
+  const inst = instrument.toUpperCase();
+  const pipValue = inst === "XAUUSD" ? 10 : inst.includes("JPY") ? 9.1 : 10;
   return lots * pips * pipValue;
 }
 function toLocalInput(iso: string | null) {
@@ -268,10 +282,15 @@ export default function TradeDetailPage() {
     const e = parseFloat(entryPrice), x = parseFloat(exitPrice), lots = parseFloat(lotSize);
     if (!e || !x || !lots) return null;
     const pips = calcPips(instrument, e, x, direction);
-    const gross = calcPnL(instrument, lots, pips);
+    // Dollar P&L only for instruments with a verified pip/lot spec (see
+    // RiskCalculator.ts) — for everything else (indices, stocks, unlisted
+    // symbols) we don't know the real contract multiplier, so don't fabricate
+    // a number. Fall back to whatever's already stored (e.g. from MT5 sync).
+    const precise = hasPreciseSizing(instrument);
+    const gross = precise ? calcPnL(instrument, lots, pips) : null;
     const sw = trade?.swap ?? 0;
     const fee = trade?.fees ?? 0;
-    const net = parseFloat((gross + sw + fee).toFixed(2));
+    const net = gross != null ? parseFloat((gross + sw + fee).toFixed(2)) : null;
     const s = parseFloat(sl);
     const r = s ? (direction === "LONG" ? x - e : e - x) / Math.abs(e - s) : null;
     return { gross, net, pips, r };
@@ -421,12 +440,17 @@ export default function TradeDetailPage() {
       const openDt = openTime ? new Date(openTime).toISOString() : trade.open_time;
       const closeDt = closeTime ? new Date(closeTime).toISOString() : null;
 
-      let grossPnl: number | null = null;
-      let netPnl: number | null = null;
+      let grossPnl: number | null = trade.gross_pnl;
+      let netPnl: number | null = trade.net_pnl;
       let returnR: number | null = null;
       let durMin: number | null = null;
 
-      if (x) {
+      // Only recompute $ P&L for instruments with a verified pip/lot spec.
+      // Otherwise keep whatever's already stored (e.g. from MT5 sync) instead
+      // of overwriting it with a guess — this is what corrupted the GER40
+      // trade whose "pips" were computed with the forex pip size (0.0001)
+      // instead of GER40's actual point-based quoting.
+      if (x && hasPreciseSizing(instrument)) {
         const pips = calcPips(instrument, e, x, direction);
         grossPnl = parseFloat(calcPnL(instrument, lots, pips).toFixed(2));
         netPnl = parseFloat((grossPnl + sw + fee).toFixed(2));
