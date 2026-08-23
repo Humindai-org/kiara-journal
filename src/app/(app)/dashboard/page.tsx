@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import { createClient } from "@/lib/supabase/client";
 import { useAccountStore } from "@/store/account";
+import PnlCalendar from "@/components/dashboard/PnlCalendar";
 
 type Trade = {
   id: string;
@@ -82,7 +83,9 @@ function DisciplineRow({ group, onClick }: { group: DisciplineGroup; onClick: ()
   );
 }
 
-function ViolationPopup({ group, onClose }: { group: { name: string; violations: Trade[] }; onClose: () => void }) {
+type TradeListDetail = { title: string; subtitle: string; trades: Trade[] };
+
+function TradeListModal({ detail, onClose }: { detail: TradeListDetail; onClose: () => void }) {
   function fmtDate(iso: string) {
     return new Date(iso).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "2-digit" });
   }
@@ -97,21 +100,19 @@ function ViolationPopup({ group, onClose }: { group: { name: string; violations:
       >
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-text-primary">{group.name}</h3>
-            <p className="text-[11px] text-text-disabled mt-0.5">
-              {group.violations.length} trade{group.violations.length !== 1 ? "s" : ""} donde no se siguió el plan
-            </p>
+            <h3 className="text-sm font-semibold text-text-primary">{detail.title}</h3>
+            <p className="text-[11px] text-text-disabled mt-0.5">{detail.subtitle}</p>
           </div>
           <button onClick={onClose} className="text-text-disabled hover:text-text-secondary mt-0.5">
             <X className="size-4" />
           </button>
         </div>
 
-        {group.violations.length === 0 ? (
-          <p className="text-sm text-text-disabled text-center py-6">Sin violaciones registradas</p>
+        {detail.trades.length === 0 ? (
+          <p className="text-sm text-text-disabled text-center py-6">No trades to show</p>
         ) : (
           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-            {group.violations.map((t) => (
+            {detail.trades.map((t) => (
               <div key={t.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-surface-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -155,39 +156,124 @@ function ViolationPopup({ group, onClose }: { group: { name: string; violations:
   );
 }
 
-const INITIAL_BALANCE = 100000;
-const DD_LIMIT = 10000;
-const PROFIT_TARGET = 5000;
-
 function fmtUsd(n: number, sign = false) {
   const s = sign && n > 0 ? "+" : "";
   return `${s}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function KpiCard({ label, value, sub, color, icon: Icon }: {
+function KpiCard({ label, value, sub, color, icon: Icon, onClick }: {
   label: string; value: string; sub?: string; color?: string;
   icon: React.ComponentType<{ className?: string }>;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="card-light p-4">
+  const inner = (
+    <>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs text-text-secondary">{label}</p>
         <Icon className="size-4 text-text-disabled" />
       </div>
       <p className={cn("text-2xl font-mono font-semibold", color ?? "text-text-primary")}>{value}</p>
       {sub && <p className="text-[11px] text-text-disabled mt-1">{sub}</p>}
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button
+        onClick={onClick}
+        className="card-light p-4 text-left hover:bg-surface-hi transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className="card-light p-4">{inner}</div>;
+}
+
+// ─── Objective rule adherence ─────────────────────────────────
+// Derived straight from the trades + the active plan — no manual tagging
+// needed, so it means something even before the user marks "followed plan".
+type PlanRules = {
+  max_trades_per_day: number | null;
+  trading_window_start: string | null;
+  trading_window_end: string | null;
+};
+type RuleRow = { id: string; name: string; rate: number };
+
+function computeRuleAdherence(
+  closed: Trade[],
+  plan: PlanRules | null,
+  dailyStop: number | null,
+): { rules: RuleRow[]; overall: number | null } {
+  if (closed.length === 0) return { rules: [], overall: null };
+
+  // Bucket trades by their local calendar day.
+  const byDay = new Map<string, Trade[]>();
+  for (const t of closed) {
+    const d = new Date(t.open_time);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const arr = byDay.get(key) ?? [];
+    arr.push(t);
+    byDay.set(key, arr);
+  }
+  const days = [...byDay.values()];
+  const rules: RuleRow[] = [];
+
+  if (plan?.max_trades_per_day && plan.max_trades_per_day > 0) {
+    const ok = days.filter(d => d.length <= plan.max_trades_per_day!).length;
+    rules.push({ id: "MAX_TRADES", name: "Max trades/day", rate: (ok / days.length) * 100 });
+  }
+
+  if (dailyStop && dailyStop > 0) {
+    const ok = days.filter(d => {
+      const dayPnl = d.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
+      return Math.abs(Math.min(0, dayPnl)) <= dailyStop;
+    }).length;
+    rules.push({ id: "DAILY_STOP", name: "Daily stop", rate: (ok / days.length) * 100 });
+  }
+
+  // Trading window — compared in the browser's local time. The window is stored
+  // without a timezone, so this is an approximation until the wizard captures one.
+  if (plan?.trading_window_start && plan?.trading_window_end) {
+    const [sh, sm] = plan.trading_window_start.split(":").map(Number);
+    const [eh, em] = plan.trading_window_end.split(":").map(Number);
+    const startMin = sh * 60 + (sm || 0);
+    const endMin = eh * 60 + (em || 0);
+    if (Number.isFinite(startMin) && Number.isFinite(endMin) && endMin > startMin) {
+      let ok = 0;
+      for (const t of closed) {
+        const d = new Date(t.open_time);
+        const min = d.getHours() * 60 + d.getMinutes();
+        if (min >= startMin && min <= endMin) ok++;
+      }
+      rules.push({ id: "WINDOW", name: "Trading window", rate: (ok / closed.length) * 100 });
+    }
+  }
+
+  const overall = rules.length > 0
+    ? rules.reduce((s, r) => s + r.rate, 0) / rules.length
+    : null;
+  return { rules, overall };
 }
 
 // ─── SVG Equity Curve ─────────────────────────────────────────
-function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance: number; date: string }[]; startBalance?: number }) {
+// Everything here is relative to `startBalance` — the balance the account had
+// when the visible period began. That keeps the curve readable whether the
+// account holds $400 or $100,000.
+function EquityCurve({ data, startBalance }: { data: { balance: number; date: string }[]; startBalance: number }) {
   const W = 800, H = 240, padL = 8, padR = 8, padT = 12, padB = 22;
   const points = [{ balance: startBalance, date: "Start" }, ...data];
   const balances = points.map(p => p.balance);
-  const min = Math.min(...balances, INITIAL_BALANCE);
-  const max = Math.max(...balances, INITIAL_BALANCE);
+
+  // Scale to the data's own range, with 8% headroom so the line never touches
+  // the edges. Guard the flat case (one trade, or a period with no movement).
+  const rawMin = Math.min(...balances);
+  const rawMax = Math.max(...balances);
+  const spread = rawMax - rawMin;
+  const pad = spread > 0 ? spread * 0.08 : Math.max(Math.abs(startBalance) * 0.01, 1);
+  const min = rawMin - pad;
+  const max = rawMax + pad;
   const range = max - min || 1;
+
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
 
@@ -196,9 +282,9 @@ function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance
 
   const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(p.balance).toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L ${x(points.length - 1).toFixed(1)} ${(H - padB).toFixed(1)} L ${padL} ${(H - padB).toFixed(1)} Z`;
-  const baselineY = y(INITIAL_BALANCE);
+  const baselineY = y(startBalance);
   const lastBalance = points[points.length - 1].balance;
-  const lineColor = lastBalance >= INITIAL_BALANCE ? "#34d399" : "#f87171";
+  const lineColor = lastBalance >= startBalance ? "#34d399" : "#f87171";
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 240 }} preserveAspectRatio="none">
@@ -208,7 +294,7 @@ function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance
           <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
         </linearGradient>
       </defs>
-      {/* baseline (initial balance) */}
+      {/* baseline — where this period started */}
       <line x1={padL} y1={baselineY} x2={W - padR} y2={baselineY} stroke="#6b6688" strokeWidth={1} strokeDasharray="4 4" />
       <path d={areaPath} fill="url(#eqGrad)" />
       <path d={linePath} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" />
@@ -219,7 +305,7 @@ function EquityCurve({ data, startBalance = INITIAL_BALANCE }: { data: { balance
 }
 
 // ─── SVG Discipline Gauge ─────────────────────────────────────
-function DisciplineGauge({ rate }: { rate: number }) {
+function DisciplineGauge({ rate, label }: { rate: number; label: string }) {
   const color = rate >= 80 ? "#34d399" : rate >= 60 ? "#fbbf24" : "#f87171";
   const circ = 2 * Math.PI * 42;
   return (
@@ -233,8 +319,22 @@ function DisciplineGauge({ rate }: { rate: number }) {
       </svg>
       <div className="absolute flex flex-col items-center">
         <span className="text-2xl font-mono font-bold text-text-primary">{rate.toFixed(0)}%</span>
-        <span className="text-[10px] text-text-disabled">followed plan</span>
+        <span className="text-[10px] text-text-disabled">{label}</span>
       </div>
+    </div>
+  );
+}
+
+function RuleBar({ name, rate }: { name: string; rate: number }) {
+  const bar = rate >= 80 ? "bg-profit" : rate >= 60 ? "bg-warning" : "bg-loss";
+  const txt = rate >= 80 ? "text-profit" : rate >= 60 ? "text-warning" : "text-loss";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-text-secondary w-24 shrink-0 truncate">{name}</span>
+      <div className="flex-1 h-1.5 bg-surface-2 rounded-full overflow-hidden">
+        <div className={cn("h-full rounded-full transition-all", bar)} style={{ width: `${rate}%` }} />
+      </div>
+      <span className={cn("text-[11px] font-mono w-9 text-right shrink-0", txt)}>{rate.toFixed(0)}%</span>
     </div>
   );
 }
@@ -243,12 +343,26 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
   const { activeAccountId, accounts } = useAccountStore();
   const account = accounts.find(a => a.id === activeAccountId) ?? null;
-  const initialBalance = account?.initial_balance ?? INITIAL_BALANCE;
+  const initialBalance = account?.initial_balance ?? 0;
+
+  // Risk fields live on the row but not yet in the generated Supabase types.
+  // `profit_target` arrives with migration 0012 — until then the target card
+  // simply hides rather than showing someone else's objective.
+  const risk = account as unknown as {
+    total_dd_floor?: number | null;
+    profit_target?: number | null;
+  } | null;
+  const ddFloor = risk?.total_dd_floor ?? null;
+  const ddLimit = ddFloor != null ? Math.max(0, initialBalance - ddFloor) : null;
+  const profitTarget = risk?.profit_target ?? null;
+  const personalDailyStop = (account as unknown as { personal_daily_stop_usd?: number | null } | null)
+    ?.personal_daily_stop_usd ?? null;
 
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [plan, setPlan] = useState<PlanRules | null>(null);
   const [loading, setLoading] = useState(true);
   const [equityPeriod, setEquityPeriod] = useState<"1W" | "1M" | "3M" | "all">("all");
-  const [detail, setDetail] = useState<{ name: string; violations: Trade[] } | null>(null);
+  const [detail, setDetail] = useState<TradeListDetail | null>(null);
 
   useEffect(() => {
     if (!activeAccountId) { setLoading(false); return; }
@@ -263,6 +377,21 @@ export default function DashboardPage() {
         setTrades((rows as unknown as Trade[]) ?? []);
         setLoading(false);
       });
+  }, [supabase, activeAccountId]);
+
+  // Active plan drives the objective discipline checks (rules the trader set for
+  // themselves). Scoped by user; the plan isn't per-account today.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) return;
+      supabase
+        .from("plans")
+        .select("max_trades_per_day, trading_window_start, trading_window_end")
+        .eq("user_id", data.user.id)
+        .eq("is_active", true)
+        .maybeSingle()
+        .then(({ data: p }) => setPlan((p as unknown as PlanRules) ?? null));
+    });
   }, [supabase, activeAccountId]);
 
   const stats = useMemo(() => {
@@ -327,19 +456,27 @@ export default function DashboardPage() {
       .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
 
     const balance = initialBalance + totalPnl;
-    const progressToTarget = Math.max(0, Math.min(100, (totalPnl / PROFIT_TARGET) * 100));
+    const progressToTarget = profitTarget && profitTarget > 0
+      ? Math.max(0, Math.min(100, (totalPnl / profitTarget) * 100))
+      : null;
 
     const instrGroups = buildDisciplineGroups(closed, t => t.instrument);
     const sessionGroups = buildDisciplineGroups(closed, t => t.session?.replace("_", " ") ?? "—");
+
+    // Biggest wins first, biggest losses first — for the drill-down popups.
+    const winsSorted = [...wins].sort((a, b) => (b.net_pnl ?? 0) - (a.net_pnl ?? 0));
+    const lossesSorted = [...losses].sort((a, b) => (a.net_pnl ?? 0) - (b.net_pnl ?? 0));
+
+    const ruleAdherence = computeRuleAdherence(closed, plan, personalDailyStop);
 
     return {
       totalPnl, winRate, profitFactor, avgWin, avgLoss, avgR, expectancy,
       tradeCount: closed.length, winCount: wins.length, lossCount: losses.length,
       equity, maxDD, balance, disciplineRate, evaluatedCount: evaluated.length,
-      sessionData, instrData, progressToTarget, streak,
-      instrGroups, sessionGroups,
+      followedCount, sessionData, instrData, progressToTarget, streak,
+      instrGroups, sessionGroups, winsSorted, lossesSorted, ruleAdherence,
     };
-  }, [trades, initialBalance]);
+  }, [trades, initialBalance, profitTarget, plan, personalDailyStop]);
 
   const { equityForDisplay, equityStartBalance } = useMemo(() => {
     if (equityPeriod === "all" || stats.equity.length === 0) {
@@ -365,6 +502,10 @@ export default function DashboardPage() {
   }
 
   const hasData = stats.tradeCount > 0;
+  const periodEndBalance = equityForDisplay.length > 0
+    ? equityForDisplay[equityForDisplay.length - 1].balance
+    : equityStartBalance;
+  const periodDelta = periodEndBalance - equityStartBalance;
   const maxSessionAbs = Math.max(...stats.sessionData.map(d => Math.abs(d.pnl)), 1);
   const maxInstrAbs = Math.max(...stats.instrData.map(d => Math.abs(d.pnl)), 1);
 
@@ -403,45 +544,83 @@ export default function DashboardPage() {
           />
           <KpiCard
             label="Avg winner" value={hasData && stats.avgWin > 0 ? `$${fmtUsd(stats.avgWin)}` : "—"}
-            sub={hasData ? `${stats.winCount} wins` : "No trades"}
+            sub={hasData ? `${stats.winCount} wins${stats.winCount > 0 ? " · view" : ""}` : "No trades"}
             color="text-profit"
             icon={TrendingUp}
+            onClick={stats.winCount > 0 ? () => setDetail({
+              title: "Winning trades",
+              subtitle: `${stats.winCount} winner${stats.winCount !== 1 ? "s" : ""} · avg $${fmtUsd(stats.avgWin)}`,
+              trades: stats.winsSorted,
+            }) : undefined}
           />
           <KpiCard
             label="Avg loser" value={hasData && stats.avgLoss > 0 ? `-$${fmtUsd(stats.avgLoss)}` : "—"}
-            sub={hasData ? `${stats.lossCount} losses` : "No trades"}
+            sub={hasData ? `${stats.lossCount} losses${stats.lossCount > 0 ? " · view" : ""}` : "No trades"}
             color="text-loss"
             icon={TrendingDown}
+            onClick={stats.lossCount > 0 ? () => setDetail({
+              title: "Losing trades",
+              subtitle: `${stats.lossCount} loser${stats.lossCount !== 1 ? "s" : ""} · avg -$${fmtUsd(stats.avgLoss)}`,
+              trades: stats.lossesSorted,
+            }) : undefined}
           />
         </div>
 
-        {/* ── Phase 2 progress ──────────────────────────── */}
-        <div className="card-light p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="size-4 text-accent" />
-              <p className="text-sm font-medium text-text-primary">Phase 2 Progress</p>
+        {/* ── Objective progress ────────────────────────── */}
+        {(profitTarget != null || ddLimit != null) && (
+          <div className="card-light p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Target className="size-4 text-accent" />
+                <p className="text-sm font-medium text-text-primary">Objective progress</p>
+              </div>
+              {profitTarget != null && (
+                <span className="text-xs text-text-secondary">
+                  ${fmtUsd(Math.max(0, stats.totalPnl))} / ${fmtUsd(profitTarget)} target
+                </span>
+              )}
             </div>
-            <span className="text-xs text-text-secondary">
-              ${fmtUsd(Math.max(0, stats.totalPnl))} / ${fmtUsd(PROFIT_TARGET)} target
-            </span>
+            {stats.progressToTarget != null && (
+              <div className="h-2.5 bg-surface-hi rounded-full overflow-hidden">
+                <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${stats.progressToTarget}%` }} />
+              </div>
+            )}
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-[11px] text-text-disabled">
+                {stats.progressToTarget != null
+                  ? `${stats.progressToTarget.toFixed(1)}% of target`
+                  : "No profit target set for this account"}
+              </span>
+              {ddLimit != null && (
+                <span className={cn("text-[11px]", stats.maxDD > ddLimit * 0.7 ? "text-loss" : "text-text-disabled")}>
+                  Max DD: ${fmtUsd(stats.maxDD)} / ${fmtUsd(ddLimit)}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="h-2.5 bg-surface-hi rounded-full overflow-hidden">
-            <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${stats.progressToTarget}%` }} />
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-[11px] text-text-disabled">{stats.progressToTarget.toFixed(1)}% of target</span>
-            <span className={cn("text-[11px]", stats.maxDD > DD_LIMIT * 0.7 ? "text-loss" : "text-text-disabled")}>
-              Max DD: ${fmtUsd(stats.maxDD)} / ${fmtUsd(DD_LIMIT)}
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* ── Equity curve + discipline ─────────────────── */}
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2 card p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-text-primary">Equity curve</p>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Equity curve</p>
+                {hasData && equityForDisplay.length > 0 && (
+                  <p className="text-[11px] text-text-disabled font-mono mt-0.5">
+                    Start ${fmtUsd(equityStartBalance)}
+                    <span className={cn(
+                      "ml-2",
+                      periodDelta >= 0 ? "text-profit" : "text-loss"
+                    )}>
+                      {periodDelta >= 0 ? "+" : "-"}${fmtUsd(Math.abs(periodDelta))}
+                      {equityStartBalance > 0 && (
+                        <> · {periodDelta >= 0 ? "+" : ""}{((periodDelta / equityStartBalance) * 100).toFixed(2)}%</>
+                      )}
+                    </span>
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 {hasData && equityForDisplay.length > 0 && (
                   <span className="text-xs font-mono text-text-secondary">
@@ -483,13 +662,42 @@ export default function DashboardPage() {
             </div>
             {hasData ? (
               <>
-                <div className="flex flex-col items-center py-2">
-                  <DisciplineGauge rate={stats.disciplineRate} />
-                </div>
+                {/* Objective: rules respected — always computable from the data */}
+                {stats.ruleAdherence.overall != null ? (
+                  <>
+                    <div className="flex flex-col items-center py-1">
+                      <DisciplineGauge rate={stats.ruleAdherence.overall} label="rules respected" />
+                    </div>
+                    <div className="space-y-1.5">
+                      {stats.ruleAdherence.rules.map((r) => (
+                        <RuleBar key={r.id} name={r.name} rate={r.rate} />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[11px] text-text-disabled bg-surface-2/60 rounded-lg p-3 text-center">
+                    Set up a trading plan (max trades/day, hours, daily stop) to track
+                    how well you respect your own rules.
+                  </div>
+                )}
+
+                <div className="h-px bg-border" />
+
+                {/* Subjective: your own "did I follow the plan?" tag */}
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-secondary">Evaluated trades</span>
-                    <span className="font-mono text-text-primary">{stats.evaluatedCount}/{stats.tradeCount}</span>
+                    <span className="text-text-secondary">Plan adherence</span>
+                    {stats.evaluatedCount > 0 ? (
+                      <span className={cn(
+                        "font-mono",
+                        stats.disciplineRate >= 80 ? "text-profit"
+                          : stats.disciplineRate >= 60 ? "text-warning" : "text-loss"
+                      )}>
+                        {stats.disciplineRate.toFixed(0)}% · {stats.followedCount}/{stats.evaluatedCount}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-text-disabled">not evaluated</span>
+                    )}
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-text-secondary">Current streak</span>
@@ -504,16 +712,17 @@ export default function DashboardPage() {
                     </span>
                   </div>
                 </div>
-                {stats.disciplineRate < 80 && stats.evaluatedCount > 0 && (
-                  <div className="flex items-start gap-1.5 text-[11px] text-warning bg-warning/10 rounded-lg p-2">
+
+                {stats.evaluatedCount === 0 && (
+                  <div className="flex items-start gap-1.5 text-[11px] text-text-disabled bg-surface-2/60 rounded-lg p-2">
                     <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
-                    <span>Discipline below 80%. Review the trades where you didn&apos;t follow the plan.</span>
+                    <span>Mark whether you followed your plan on each trade in the journal to track plan adherence.</span>
                   </div>
                 )}
               </>
             ) : (
               <div className="h-[200px] flex items-center justify-center text-text-disabled text-xs text-center">
-                Evaluate your trades in the journal to see your discipline
+                Register trades to see your discipline
               </div>
             )}
           </div>
@@ -580,7 +789,11 @@ export default function DashboardPage() {
                     <DisciplineRow
                       key={g.name}
                       group={g}
-                      onClick={() => setDetail({ name: g.name, violations: g.violations })}
+                      onClick={() => setDetail({
+                        title: g.name,
+                        subtitle: `${g.violations.length} trade${g.violations.length !== 1 ? "s" : ""} where the plan wasn't followed`,
+                        trades: g.violations,
+                      })}
                     />
                   ))}
                 </div>
@@ -598,7 +811,11 @@ export default function DashboardPage() {
                     <DisciplineRow
                       key={g.name}
                       group={g}
-                      onClick={() => setDetail({ name: g.name, violations: g.violations })}
+                      onClick={() => setDetail({
+                        title: g.name,
+                        subtitle: `${g.violations.length} trade${g.violations.length !== 1 ? "s" : ""} where the plan wasn't followed`,
+                        trades: g.violations,
+                      })}
                     />
                   ))}
                 </div>
@@ -606,6 +823,9 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
+        {/* ── Calendar ──────────────────────────────────── */}
+        {hasData && <PnlCalendar trades={trades} />}
 
         {!hasData && (
           <div className="card p-12 text-center">
@@ -616,7 +836,7 @@ export default function DashboardPage() {
       </main>
 
       {detail && (
-        <ViolationPopup group={detail} onClose={() => setDetail(null)} />
+        <TradeListModal detail={detail} onClose={() => setDetail(null)} />
       )}
     </div>
   );

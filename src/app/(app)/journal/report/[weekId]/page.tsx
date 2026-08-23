@@ -37,6 +37,7 @@ import {
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import { createClient } from "@/lib/supabase/client";
+import { useAccountStore } from "@/store/account";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -303,6 +304,8 @@ export default function WeekReportPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+
   useEffect(() => {
     if (!parsed) return;
     const { year, month, weekNum, startDay, endDay } = parsed;
@@ -320,23 +323,29 @@ export default function WeekReportPage() {
       if (!data?.user) { setLoading(false); return; }
       const uid = data.user.id;
 
+      // Scope every query to the selected account so the weekly report matches
+      // the dashboard and the journal calendar.
+      const scoped = <T,>(q: T): T =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        activeAccountId ? (q as any).eq("account_id", activeAccountId) : q;
+
       const [{ data: tr }, { data: ptr }, { data: vi }, { data: pl }] = await Promise.all([
-        supabase.from("trades")
+        scoped(supabase.from("trades")
           .select("id, instrument, direction, net_pnl, open_time, session, return_r, risk_percent, tags, followed_plan")
           .eq("user_id", uid)
           .gte("open_time", fromISO)
-          .lte("open_time", toISO)
+          .lte("open_time", toISO))
           .order("open_time", { ascending: true }),
-        supabase.from("trades")
+        scoped(supabase.from("trades")
           .select("net_pnl, return_r")
           .eq("user_id", uid)
           .gte("open_time", pwFromISO)
-          .lte("open_time", pwToISO),
-        supabase.from("discipline_violations")
+          .lte("open_time", pwToISO)),
+        scoped(supabase.from("discipline_violations")
           .select("id, violation_type, date, description")
           .eq("user_id", uid)
           .gte("date", fromDate)
-          .lte("date", toDate),
+          .lte("date", toDate)),
         supabase.from("plans")
           .select("max_trades_per_day, max_daily_loss, risk_per_trade_percent")
           .eq("user_id", uid)
@@ -361,7 +370,7 @@ export default function WeekReportPage() {
       }
       setLoading(false);
     });
-  }, [supabase, parsed]);
+  }, [supabase, parsed, activeAccountId]);
 
   // ── Derived data ──────────────────────────────────────────
   const pnls = useMemo(() => trades.map(t => t.net_pnl ?? 0), [trades]);

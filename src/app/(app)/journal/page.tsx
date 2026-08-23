@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import TopBar from "@/components/layout/TopBar";
 import { createClient } from "@/lib/supabase/client";
+import { useAccountStore } from "@/store/account";
 import MonthlyPnLBars from "@/components/journal/MonthlyPnLBars";
 import WeekBreakdownCarousel from "@/components/journal/WeekBreakdownCarousel";
 
@@ -74,7 +75,11 @@ export default function JournalPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // Scope to the selected account so the journal agrees with the dashboard.
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+
   const fetchTrades = useCallback(async (uid: string, y: number, m: number) => {
+    if (!activeAccountId) { setTrades([]); setLoading(false); return; }
     setLoading(true);
     const from = new Date(y, m, 1).toISOString();
     const to = new Date(y, m + 1, 0, 23, 59, 59).toISOString();
@@ -82,18 +87,18 @@ export default function JournalPage() {
       .from("trades")
       .select("id, instrument, direction, net_pnl, open_time, session, return_r, followed_plan")
       .eq("user_id", uid)
+      .eq("account_id", activeAccountId)
       .gte("open_time", from)
       .lte("open_time", to)
       .order("open_time", { ascending: true });
     setTrades((data as Trade[]) ?? []);
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, activeAccountId]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user) {
         setUserId(data.user.id);
-        fetchTrades(data.user.id, year, month);
       } else {
         setLoading(false);
       }
@@ -414,8 +419,13 @@ export default function JournalPage() {
 
           {/* ── Bottom section: monthly summary + week breakdown ── */}
           <div className="mt-8 space-y-6 pb-6">
-            {userId && <MonthlyPnLBars userId={userId} />}
-            <WeekBreakdownCarousel year={year} month={month} trades={trades} />
+            {userId && <MonthlyPnLBars userId={userId} accountId={activeAccountId} />}
+            <WeekBreakdownCarousel
+              year={year}
+              month={month}
+              trades={trades}
+              accountId={activeAccountId}
+            />
           </div>
         </div>
 

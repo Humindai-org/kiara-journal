@@ -17,6 +17,7 @@ import PreMarketModal, {
   type PreMarketSession,
 } from "@/components/trading/PreMarketModal";
 import { createClient } from "@/lib/supabase/client";
+import { isCrypto, instrumentsForClasses, FOREX_UNIVERSE, METALS_UNIVERSE, CRYPTO_UNIVERSE } from "@/components/trading/RiskCalculator";
 import { useAccountStore } from "@/store/account";
 
 type Plan = {
@@ -24,7 +25,14 @@ type Plan = {
   max_trades_per_day: number;
   max_daily_loss: number;
   max_daily_profit: number | null;
+  risk_per_trade_percent: number | null;
 };
+
+// Fallback for accounts created before the onboarding wizard existed (no
+// `instruments` column set yet) — forex + metals is the safest default.
+const LEGACY_DEFAULT_INSTRUMENTS = [...FOREX_UNIVERSE, ...METALS_UNIVERSE];
+
+const EXCHANGE_TYPES = ["BITGET", "BYBIT", "BINANCE"];
 
 type WarningLevel = "safe" | "caution" | "danger" | "breach";
 
@@ -73,7 +81,21 @@ export default function TradingPage() {
   const [activeSession, setActiveSession] = useState<PreMarketSession | null>(null);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const accounts = useAccountStore((s) => s.accounts);
   const supabase = useMemo(() => createClient(), []);
+
+  const account = accounts.find((a) => a.id === activeAccountId) ?? null;
+  const isExchangeAccount = EXCHANGE_TYPES.includes(account?.type ?? "");
+  // `instruments` lives on the row (0012) but isn't in the generated types yet.
+  const accountInstrumentClasses = (account as unknown as { instruments?: string[] } | null)?.instruments;
+  const instruments = accountInstrumentClasses?.length
+    ? instrumentsForClasses(accountInstrumentClasses)
+    : isExchangeAccount
+    ? [...CRYPTO_UNIVERSE, ...LEGACY_DEFAULT_INSTRUMENTS]
+    : LEGACY_DEFAULT_INSTRUMENTS;
+  const exchangePrefix = account?.type === "BITGET" ? "BITGET"
+    : account?.type === "BYBIT" ? "BYBIT"
+    : "BINANCE";
 
   const fetchData = useCallback(async () => {
     if (!activeAccountId) return;
@@ -83,7 +105,7 @@ export default function TradingPage() {
 
     const { data: planData } = await supabase
       .from("plans")
-      .select("id, max_trades_per_day, max_daily_loss, max_daily_profit")
+      .select("id, max_trades_per_day, max_daily_loss, max_daily_profit, risk_per_trade_percent")
       .eq("user_id", user.id)
       .eq("is_active", true)
       .maybeSingle();
@@ -168,20 +190,21 @@ export default function TradingPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
 
+    const PLAN_COLS =
+      "id, max_trades_per_day, max_daily_loss, max_daily_profit, risk_per_trade_percent";
+
     if (!plan) {
-      // No active plan yet — create a default one with this first value
-      const defaults = { max_trades_per_day: 3, max_daily_loss: 300, max_daily_profit: 500 };
+      // No active plan yet — create a bare one carrying this first value.
+      // The onboarding wizard is what fills in a real plan.
       const { data } = await sb
         .from("plans")
         .insert({
           user_id: user.id,
-          name: "MATVARD — Fase 2",
-          plan_type: "MATVARD",
+          name: account?.name ? `Plan — ${account.name}` : "My trading plan",
           is_active: true,
-          ...defaults,
           [field]: value,
         })
-        .select("id, max_trades_per_day, max_daily_loss, max_daily_profit")
+        .select(PLAN_COLS)
         .maybeSingle();
       if (data) setPlan(data as Plan);
       return;
@@ -191,13 +214,19 @@ export default function TradingPage() {
       .from("plans")
       .update({ [field]: value })
       .eq("id", plan.id)
-      .select("id, max_trades_per_day, max_daily_loss, max_daily_profit")
+      .select(PLAN_COLS)
       .maybeSingle();
     if (data) setPlan(data as Plan);
   }
 
   function handleSymbolChange(instrument: string) {
-    const tvSymbol = instrument === "XAUUSD" ? "OANDA:XAUUSD" : `FX:${instrument}`;
+    // Route by what the instrument *is*, not by the account type — a Bitget
+    // account can hold both BTCUSDT and EURUSD.
+    const tvSymbol = isCrypto(instrument)
+      ? `${exchangePrefix}:${instrument}`
+      : instrument === "XAUUSD"
+      ? "OANDA:XAUUSD"
+      : `FX:${instrument}`;
     setSymbol(tvSymbol);
   }
 
@@ -302,6 +331,9 @@ export default function TradingPage() {
                 maxTrades={maxTrades}
                 newsBlock={null}
                 onTradeLogged={fetchData}
+                balance={account?.current_balance ?? 0}
+                riskPercent={plan?.risk_per_trade_percent ?? undefined}
+                instruments={instruments}
               />
             </div>
 

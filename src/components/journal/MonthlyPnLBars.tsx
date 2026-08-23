@@ -8,11 +8,13 @@ const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct
 
 interface MonthlyPnLBarsProps {
   userId: string;
+  /** Scopes the chart to one account, matching the dashboard. */
+  accountId?: string | null;
 }
 
 type MonthBucket = { year: number; month: number; pnl: number; hasTrades: boolean };
 
-export default function MonthlyPnLBars({ userId }: MonthlyPnLBarsProps) {
+export default function MonthlyPnLBars({ userId, accountId }: MonthlyPnLBarsProps) {
   const supabase = useMemo(() => createClient(), []);
   const [buckets, setBuckets] = useState<MonthBucket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,11 +29,14 @@ export default function MonthlyPnLBars({ userId }: MonthlyPnLBarsProps) {
     });
     const from = new Date(months[0].year, months[0].month, 1).toISOString();
 
-    supabase
+    let query = supabase
       .from("trades")
       .select("open_time, net_pnl")
       .eq("user_id", userId)
-      .gte("open_time", from)
+      .gte("open_time", from);
+    if (accountId) query = query.eq("account_id", accountId);
+
+    query
       .then(({ data }) => {
         if (data) {
           for (const t of data as { open_time: string; net_pnl: number | null }[]) {
@@ -46,7 +51,7 @@ export default function MonthlyPnLBars({ userId }: MonthlyPnLBarsProps) {
         setBuckets(months);
         setLoading(false);
       });
-  }, [supabase, userId]);
+  }, [supabase, userId, accountId]);
 
   const yearTotal = buckets.reduce((s, b) => s + b.pnl, 0);
   const maxAbs = Math.max(...buckets.map(b => Math.abs(b.pnl)), 1);

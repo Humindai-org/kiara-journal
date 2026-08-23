@@ -51,7 +51,7 @@ export default function Sidebar() {
         </div>
         {!collapsed && (
           <span className="font-medium text-text-primary text-sm leading-tight">
-            Kiara<br />
+            Trading<br />
             <span className="text-text-secondary text-xs font-normal">Journal</span>
           </span>
         )}

@@ -8,7 +8,7 @@ import {
   Copy, BarChart2, Calendar, Shield, Search,
   Pencil, Lock, Wand2, LayoutDashboard, ListChecks,
   ArrowUpRight, SlidersHorizontal, ArrowDownLeft,
-  FileText, BookOpen, ImagePlus, X, Check, Save,
+  FileText, BookOpen, ImagePlus, X, Check, Save, Maximize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
@@ -291,47 +291,60 @@ function ChartingDiagram({ items }: { items: RuleItem[] }) {
 
 // ─── Entry Model Mini-Card ────────────────────────────────────
 
-function ModelMiniCard({ item, active, onToggle }: { item: RuleItem; active: boolean; onToggle?: () => void }) {
+function ModelMiniCard({ item, active, onToggle, onExpand }: { item: RuleItem; active: boolean; onToggle?: () => void; onExpand?: () => void }) {
   const acronym = getModelAcronym(item.label);
   const effectiveType = (item.diagramType as DiagramType) || detectDiagramType(item.label);
   return (
-    <button
-      type="button"
-      onClick={onToggle}
+    <div
       className={cn(
-        "relative w-full rounded-xl border px-2 pt-2.5 pb-2 text-center transition-all",
+        "group relative w-full rounded-xl border px-2 pt-2.5 pb-2 text-center transition-all",
         item.enabled
           ? "border-accent/40 bg-[#1c1836] shadow-[0_4px_0_#2a1f5a]"
-          : "border-border bg-surface-2 opacity-50",
-        onToggle && "cursor-pointer hover:border-accent/60 hover:opacity-100 active:scale-[0.97]"
+          : "border-border bg-surface-2 opacity-50"
       )}
     >
-      {active && (
-        <div className="absolute top-1.5 left-1.5 size-4 rounded-full bg-accent/90 flex items-center justify-center">
-          <CheckCircle2 className="size-2.5 text-bg" />
-        </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn("w-full text-center", onToggle && "cursor-pointer active:scale-[0.98]")}
+      >
+        {active && (
+          <div className="absolute top-1.5 left-1.5 z-10 size-4 rounded-full bg-accent/90 flex items-center justify-center">
+            <CheckCircle2 className="size-2.5 text-bg" />
+          </div>
+        )}
+        {item.image ? (
+          <div className="relative w-full mb-2 rounded-lg overflow-hidden bg-black/30" style={{ height: 140 }}>
+            <img src={item.image} alt="" className="w-full h-full object-contain" />
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "rgba(157,139,255,0.06)" }} />
+          </div>
+        ) : (
+          <ModelDiagram
+            type={effectiveType}
+            enabled={item.enabled}
+            className="w-full mb-2"
+            style={{ height: 140 }}
+          />
+        )}
+        <p className={cn(
+          "text-[11px] font-bold font-mono leading-tight",
+          item.enabled ? "text-accent" : "text-text-disabled"
+        )}>
+          {acronym}
+        </p>
+      </button>
+
+      {item.image && onExpand && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onExpand(); }}
+          className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-bg/70 border border-border text-text-secondary opacity-0 group-hover:opacity-100 hover:text-accent hover:border-accent/40 transition-all"
+          title="Expand image"
+        >
+          <Maximize2 className="size-3" />
+        </button>
       )}
-      {item.image ? (
-        <div className="relative w-full mb-2 rounded-lg overflow-hidden" style={{ height: 62 }}>
-          <img src={item.image} alt="" className="w-full h-full object-cover"
-            style={{ filter: "brightness(0.8) saturate(1.3)" }} />
-          <div className="absolute inset-0" style={{ background: "rgba(157,139,255,0.08)" }} />
-        </div>
-      ) : (
-        <ModelDiagram
-          type={effectiveType}
-          enabled={item.enabled}
-          className="w-full mb-2"
-          style={{ height: 62 }}
-        />
-      )}
-      <p className={cn(
-        "text-[11px] font-bold font-mono leading-tight",
-        item.enabled ? "text-accent" : "text-text-disabled"
-      )}>
-        {acronym}
-      </p>
-    </button>
+    </div>
   );
 }
 
@@ -357,7 +370,10 @@ function CheckRow({ item }: { item: RuleItem }) {
 // ─── Trade Management Row ─────────────────────────────────────
 
 function MgmtRow({ item }: { item: RuleItem }) {
-  // Try to parse "Key: value" or "Key — value" format
+  // Try to parse "Key: value" or "Key — value" format — but only treat it as a
+  // short stat badge (e.g. "Risk per trade: 0.3%") when the value is actually short.
+  // Longer descriptive rules (e.g. "SL: below the candle that swept liquidity...")
+  // render as a normal wrapped line instead, otherwise the badge overflows the card.
   const colonIdx = item.label.indexOf(": ");
   const dashIdx = item.label.indexOf(" — ");
   let key = item.label, value = "";
@@ -368,15 +384,24 @@ function MgmtRow({ item }: { item: RuleItem }) {
     key = item.label.slice(0, dashIdx);
     value = item.label.slice(dashIdx + 3);
   }
-  return (
-    <div className="flex items-center justify-between py-1.5 gap-2">
-      <div className="flex items-center gap-2 min-w-0">
-        <CheckCircle2 className={cn("size-3.5 shrink-0", item.enabled ? "text-accent" : "text-text-disabled")} />
-        <span className="text-xs text-text-secondary truncate">{key}</span>
-      </div>
-      {value && (
+  const isShortStat = value.length > 0 && value.length <= 24;
+
+  if (isShortStat) {
+    return (
+      <div className="flex items-center justify-between py-1.5 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <CheckCircle2 className={cn("size-3.5 shrink-0", item.enabled ? "text-accent" : "text-text-disabled")} />
+          <span className="text-xs text-text-secondary truncate">{key}</span>
+        </div>
         <span className="text-xs font-mono font-semibold text-text-primary shrink-0">{value}</span>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 py-1.5">
+      <CheckCircle2 className={cn("size-3.5 shrink-0 mt-0.5", item.enabled ? "text-accent" : "text-text-disabled")} />
+      <span className="text-xs text-text-secondary leading-snug">{item.label}</span>
     </div>
   );
 }
@@ -459,9 +484,10 @@ interface ModelCardManagerProps {
   onChange: (items: RuleItem[]) => void;
   editMode: boolean;
   onModelToggle?: (id: string) => void;
+  onImageExpand?: (image: string) => void;
 }
 
-function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCardManagerProps) {
+function ModelCardManager({ items, onChange, editMode, onModelToggle, onImageExpand }: ModelCardManagerProps) {
   const [newLabel, setNewLabel] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -539,11 +565,21 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
 
           return (
             <div key={item.id} className={cn(
-              "rounded-xl border overflow-hidden transition-all",
+              "group relative rounded-xl border overflow-hidden transition-all",
               item.enabled
                 ? "border-accent/50 bg-[#1e1940] shadow-[0_4px_0_#5b45a8,0_0_20px_rgba(157,139,255,0.15)]"
                 : "border-border bg-surface-2 shadow-[0_4px_0_#13111e]"
             )}>
+              {item.image && onImageExpand && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onImageExpand(item.image!); }}
+                  className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-bg/70 border border-border text-text-secondary opacity-0 group-hover:opacity-100 hover:text-accent hover:border-accent/40 transition-all"
+                  title="Expand image"
+                >
+                  <Maximize2 className="size-3" />
+                </button>
+              )}
               {/* Toggle area */}
               <div
                 role="button"
@@ -554,17 +590,16 @@ function ModelCardManager({ items, onChange, editMode, onModelToggle }: ModelCar
               >
                 {/* Diagram or uploaded image */}
                 {item.image ? (
-                  <div className="relative w-full mb-2 rounded-lg overflow-hidden" style={{ height: 44 }}>
-                    <img src={item.image} alt="" className="w-full h-full object-cover"
-                      style={{ filter: "brightness(0.8) saturate(1.3)" }} />
-                    <div className="absolute inset-0 rounded-lg" style={{ background: "rgba(157,139,255,0.08)" }} />
+                  <div className="relative w-full mb-2 rounded-lg overflow-hidden bg-black/30" style={{ height: 110 }}>
+                    <img src={item.image} alt="" className="w-full h-full object-contain" />
+                    <div className="absolute inset-0 rounded-lg pointer-events-none" style={{ background: "rgba(157,139,255,0.06)" }} />
                   </div>
                 ) : (
                   <ModelDiagram
                     type={effectiveType}
                     enabled={item.enabled}
                     className="w-full mb-2"
-                    style={{ height: 44 }}
+                    style={{ height: 110 }}
                   />
                 )}
 
@@ -662,6 +697,7 @@ export default function PlanModePage() {
   const [editMode, setEditMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [chartingImage, setChartingImage] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   // Ref to guard fetchPlans from overriding form when in new-plan mode
   const isNewRef = useRef(false);
 
@@ -669,6 +705,13 @@ export default function PlanModePage() {
   const supabase = useMemo(() => createClient(), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
+
+  useEffect(() => {
+    if (!lightboxImage) return;
+    function onKeyDown(e: KeyboardEvent) { if (e.key === "Escape") setLightboxImage(null); }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxImage]);
 
   const fetchPlans = useCallback(async (uid: string, keepSelection?: string) => {
     const { data, error } = await supabase
@@ -963,6 +1006,7 @@ export default function PlanModePage() {
                     item={item}
                     active={i === 0 && item.enabled}
                     onToggle={() => toggleModelEnabled(item.id)}
+                    onExpand={item.image ? () => setLightboxImage(item.image!) : undefined}
                   />
                 ))}
               </div>
@@ -1251,6 +1295,7 @@ export default function PlanModePage() {
                         onChange={updateModelItems}
                         editMode={editMode}
                         onModelToggle={toggleModelEnabled}
+                        onImageExpand={setLightboxImage}
                       />
                     </div>
                     <div>
@@ -1411,6 +1456,29 @@ export default function PlanModePage() {
             <p className="text-text-secondary text-sm">Select a strategy</p>
             <p className="text-xs text-text-disabled">or create a new plan from the explorer</p>
           </div>
+        </div>
+      )}
+
+      {/* Image lightbox — full-size view of an entry model's chart */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-bg/90 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 p-2 rounded-lg bg-surface/80 border border-border text-text-secondary hover:text-accent hover:border-accent/40 transition-colors"
+            title="Close"
+          >
+            <X className="size-5" />
+          </button>
+          <img
+            src={lightboxImage}
+            alt="Model chart — full size"
+            className="max-w-[92vw] max-h-[88vh] object-contain rounded-xl border border-border shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

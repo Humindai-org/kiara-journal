@@ -32,7 +32,7 @@ export default function UpdatePasswordPage() {
           <TrendingUp className="size-5 text-bg" />
         </div>
         <div className="leading-tight">
-          <p className="text-text-primary font-medium">Trading Kiara</p>
+          <p className="text-text-primary font-medium">Trading Journal</p>
           <p className="text-text-secondary text-xs">Journal</p>
         </div>
       </div>
