@@ -352,13 +352,13 @@ function ModelMiniCard({ item, active, onToggle, onExpand }: { item: RuleItem; a
 
 function CheckRow({ item }: { item: RuleItem }) {
   return (
-    <div className="flex items-start gap-2 py-1.5">
+    <div className="flex items-start gap-2 py-1.5 min-w-0">
       <CheckCircle2 className={cn(
         "size-3.5 shrink-0 mt-0.5",
         item.enabled ? "text-accent" : "text-text-disabled"
       )} />
       <span className={cn(
-        "text-xs leading-snug",
+        "text-xs leading-snug min-w-0 flex-1 break-words",
         item.enabled ? "text-text-primary" : "text-text-disabled line-through"
       )}>
         {item.label}
@@ -384,24 +384,33 @@ function MgmtRow({ item }: { item: RuleItem }) {
     key = item.label.slice(0, dashIdx);
     value = item.label.slice(dashIdx + 3);
   }
-  const isShortStat = value.length > 0 && value.length <= 24;
+  // A stat badge parks the value on the right edge on a single unwrapped line, so
+  // it only works for genuinely short values ("0.3%", "$300 (0.3%)") AND a short key.
+  const isShortStat = value.length > 0 && value.length <= 18 && key.length <= 28;
 
   if (isShortStat) {
     return (
-      <div className="flex items-center justify-between py-1.5 gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <CheckCircle2 className={cn("size-3.5 shrink-0", item.enabled ? "text-accent" : "text-text-disabled")} />
-          <span className="text-xs text-text-secondary truncate">{key}</span>
+      <div className="flex items-start justify-between py-1.5 gap-2 min-w-0">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <CheckCircle2 className={cn("size-3.5 shrink-0 mt-0.5", item.enabled ? "text-accent" : "text-text-disabled")} />
+          <span className="text-xs leading-snug text-text-secondary min-w-0 break-words">{key}</span>
         </div>
-        <span className="text-xs font-mono font-semibold text-text-primary shrink-0">{value}</span>
+        <span className="text-xs font-mono font-semibold text-text-primary shrink-0 whitespace-nowrap mt-px">{value}</span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-2 py-1.5">
+    <div className="flex items-start gap-2 py-1.5 min-w-0">
       <CheckCircle2 className={cn("size-3.5 shrink-0 mt-0.5", item.enabled ? "text-accent" : "text-text-disabled")} />
-      <span className="text-xs text-text-secondary leading-snug">{item.label}</span>
+      <span className="text-xs leading-snug min-w-0 flex-1 break-words text-text-secondary">
+        {value ? (
+          <>
+            <span className="font-medium text-text-primary">{key}: </span>
+            {value}
+          </>
+        ) : item.label}
+      </span>
     </div>
   );
 }
@@ -865,10 +874,10 @@ export default function PlanModePage() {
   const ResumenGrid = () => (
     <div className="p-4 space-y-3">
       {/* Top row: 4 columns */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "2fr 1.4fr 1.4fr 1.1fr" }}>
+      <div className="grid gap-3 min-w-0" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,1.1fr)" }}>
 
         {/* Proceso de Charting */}
-        <div className="card p-4 min-h-0">
+        <div className="card p-4 min-h-0 min-w-0">
           <p className="section-title mb-3">CHARTING PROCESS</p>
           {chartingImage ? (
             <img src={chartingImage} alt="Chart" className="w-full rounded-lg object-contain max-h-44" />
@@ -878,7 +887,7 @@ export default function PlanModePage() {
         </div>
 
         {/* Criterios de Entrada */}
-        <div className="card p-4">
+        <div className="card p-4 min-w-0">
           <p className="section-title mb-3">ENTRY CRITERIA</p>
           {form.confluence_items.length > 0 ? (
             <div className="space-y-0.5">
@@ -898,16 +907,16 @@ export default function PlanModePage() {
         </div>
 
         {/* Gestión del Trade */}
-        <div className="card p-4">
+        <div className="card p-4 min-w-0">
           <p className="section-title mb-3">TRADE MANAGEMENT</p>
-          <div className="space-y-0.5">
+          <div className="space-y-0.5 min-w-0">
             {/* Risk row from form */}
-            <div className="flex items-center justify-between py-1.5 gap-2 border-b border-border/50 mb-1">
-              <div className="flex items-center gap-2">
-                <div className="size-3.5 rounded-full bg-accent/30 border border-accent/60 shrink-0" />
-                <span className="text-xs text-text-secondary">Risk per trade</span>
+            <div className="flex items-start justify-between py-1.5 gap-2 min-w-0 border-b border-border/50 mb-1">
+              <div className="flex items-start gap-2 min-w-0 flex-1">
+                <div className="size-3.5 rounded-full bg-accent/30 border border-accent/60 shrink-0 mt-0.5" />
+                <span className="text-xs leading-snug text-text-secondary min-w-0 break-words">Risk per trade</span>
               </div>
-              <span className="text-xs font-mono font-semibold text-accent">{form.risk_per_trade_percent}%</span>
+              <span className="text-xs font-mono font-semibold text-accent shrink-0 whitespace-nowrap">{form.risk_per_trade_percent}%</span>
             </div>
             {form.trade_management_items.length > 0 ? (
               form.trade_management_items.slice(0, 6).map((item) => (
@@ -920,9 +929,9 @@ export default function PlanModePage() {
         </div>
 
         {/* Right column: stacked cards */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 min-w-0">
           {/* Controles de Riesgo */}
-          <div className="card p-3">
+          <div className="card p-3 min-w-0">
             <div className="flex items-center gap-1.5 mb-2">
               <Shield className="size-3.5 text-accent" />
               <p className="section-title text-[10px]">RISK CONTROLS</p>
@@ -934,16 +943,16 @@ export default function PlanModePage() {
                 { label: "Max. daily trades",     value: String(form.max_trades_per_day) },
                 { label: "Max. drawdown",         value: "10%" },
               ].map(({ label, value }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-[10px] text-text-disabled">{label}</span>
-                  <span className="text-[10px] font-mono font-semibold text-text-secondary">{value}</span>
+                <div key={label} className="flex items-start justify-between gap-2 min-w-0">
+                  <span className="text-[10px] leading-snug text-text-disabled min-w-0 break-words">{label}</span>
+                  <span className="text-[10px] font-mono font-semibold text-text-secondary shrink-0 whitespace-nowrap">{value}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Reglas de Disciplina */}
-          <div className="card p-3">
+          <div className="card p-3 min-w-0">
             <div className="flex items-center gap-1.5 mb-2">
               <BookOpen className="size-3.5 text-accent" />
               <p className="section-title text-[10px]">DISCIPLINE RULES</p>
@@ -956,18 +965,18 @@ export default function PlanModePage() {
                 { id: "d4", label: "Accept the stop loss",            enabled: true },
                 { id: "d5", label: "Review and improve the plan weekly", enabled: true },
               ] as RuleItem[]).map((item) => (
-                <p key={item.id} className="text-[10px] text-text-secondary leading-snug">{item.label}</p>
+                <p key={item.id} className="text-[10px] text-text-secondary leading-snug break-words">{item.label}</p>
               ))}
             </div>
           </div>
 
           {/* Notas del Plan */}
-          <div className="card p-3 flex-1">
+          <div className="card p-3 flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-2">
               <FileText className="size-3.5 text-accent" />
               <p className="section-title text-[10px]">PLAN NOTES</p>
             </div>
-            <p className="text-[10px] text-text-secondary leading-relaxed">
+            <p className="text-[10px] text-text-secondary leading-relaxed break-words">
               {form.notes_items.length > 0
                 ? form.notes_items.slice(0, 3).map(i => i.label).join(" · ")
                 : "Add notes in the Plan Notes tab to remind yourself before trading."}
@@ -977,10 +986,10 @@ export default function PlanModePage() {
       </div>
 
       {/* Bottom row: entry models + exit criteria */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "3fr 2fr" }}>
+      <div className="grid gap-3 min-w-0" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,2fr)" }}>
 
         {/* Modelos de Entrada */}
-        <div className="card p-4">
+        <div className="card p-4 min-w-0">
           <div className="flex items-center justify-between mb-3">
             <p className="section-title">ENTRY MODELS</p>
             <button
@@ -998,7 +1007,7 @@ export default function PlanModePage() {
             return (
               <div
                 className="grid gap-3"
-                style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}
               >
                 {form.model_items.map((item, i) => (
                   <ModelMiniCard
@@ -1017,7 +1026,7 @@ export default function PlanModePage() {
         </div>
 
         {/* Criterios de Salida */}
-        <div className="card p-4">
+        <div className="card p-4 min-w-0">
           <p className="section-title mb-3">EXIT CRITERIA</p>
           {form.exit_criteria_items.length > 0 ? (
             <div className="space-y-0.5">
