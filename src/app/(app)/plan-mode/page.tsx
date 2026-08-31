@@ -723,7 +723,10 @@ export default function PlanModePage() {
   type PlanStat = { count: number; winRate: number; adherence: number | null };
   const [planStats, setPlanStats] = useState<Record<string, PlanStat>>({});
   type Compliance = { entry: Record<string, number>; management: Record<string, number>; exit: Record<string, number> };
-  const [itemCompliance, setItemCompliance] = useState<Compliance | null>(null);
+  // Keyed by the plan it was computed for, so a stale result from the
+  // previously-open plan is never rendered while the next one is loading —
+  // without needing a synchronous setState(null) reset inside the effect.
+  const [itemComplianceFor, setItemComplianceFor] = useState<{ planId: string; data: Compliance } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -794,14 +797,14 @@ export default function PlanModePage() {
   // Per-item compliance for the plan currently open in the Statistics tab —
   // scoped to one plan (unlike planStats above) since it needs journal_entries too.
   useEffect(() => {
-    if (activeTab !== "stats" || !selectedId || isNew) { setItemCompliance(null); return; }
+    if (activeTab !== "stats" || !selectedId || isNew) return;
     let cancelled = false;
     setStatsLoading(true);
     (async () => {
       const { data: tr } = await supabase.from("trades").select("id").eq("plan_id", selectedId);
       const tradeIds = (tr as { id: string }[] | null)?.map(t => t.id) ?? [];
       if (tradeIds.length === 0) {
-        if (!cancelled) { setItemCompliance({ entry: {}, management: {}, exit: {} }); setStatsLoading(false); }
+        if (!cancelled) { setItemComplianceFor({ planId: selectedId, data: { entry: {}, management: {}, exit: {} } }); setStatsLoading(false); }
         return;
       }
       const { data: je } = await supabase
@@ -824,10 +827,13 @@ export default function PlanModePage() {
         return out;
       }
       if (!cancelled) {
-        setItemCompliance({
-          entry: rate(form.confluence_items, "entry_confluences"),
-          management: rate(form.trade_management_items, "trade_management_checklist"),
-          exit: rate(form.exit_criteria_items, "exit_checklist"),
+        setItemComplianceFor({
+          planId: selectedId,
+          data: {
+            entry: rate(form.confluence_items, "entry_confluences"),
+            management: rate(form.trade_management_items, "trade_management_checklist"),
+            exit: rate(form.exit_criteria_items, "exit_checklist"),
+          },
         });
         setStatsLoading(false);
       }
@@ -1553,6 +1559,7 @@ export default function PlanModePage() {
                 {activeTab === "stats" && (() => {
                   const stat = selectedId ? planStats[selectedId] : undefined;
                   const hasTrades = (stat?.count ?? 0) > 0;
+                  const itemCompliance = itemComplianceFor?.planId === selectedId ? itemComplianceFor.data : null;
                   return (
                   <>
                     <div>
