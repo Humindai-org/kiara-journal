@@ -9,13 +9,17 @@ import type { RuleItem } from "./planData";
 
 interface ItemRowProps {
   item: RuleItem;
+  // Edit mode: reflects item.enabled ("is this rule part of the plan").
+  // View mode: reflects today's session-local "did I do this" state —
+  // decoupled from item.enabled so ticking it off never rewrites the plan.
+  checked: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onEdit: (newLabel: string) => void;
   editMode: boolean;
 }
 
-function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
+function ItemRow({ item, checked, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.label);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -73,11 +77,11 @@ function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
         onClick={onToggle}
         className={cn(
           "mt-0.5 shrink-0 transition-colors",
-          item.enabled ? "text-accent" : "text-text-disabled"
+          checked ? "text-accent" : "text-text-disabled"
         )}
-        title={item.enabled ? "Disable" : "Enable"}
+        title={editMode ? (checked ? "Disable" : "Enable") : (checked ? "Mark not done" : "Mark done")}
       >
-        {item.enabled
+        {checked
           ? <CheckSquare className="size-4" />
           : <Square className="size-4" />}
       </button>
@@ -85,7 +89,11 @@ function ItemRow({ item, onToggle, onDelete, onEdit, editMode }: ItemRowProps) {
       <span
         className={cn(
           "flex-1 text-xs leading-snug select-none",
-          item.enabled ? "text-text-primary" : "text-text-disabled line-through"
+          // Edit mode: unchecked = excluded from the plan, shown crossed out.
+          // View mode: checked = completed today, shown crossed out — opposite polarity.
+          editMode
+            ? (checked ? "text-text-primary" : "text-text-disabled line-through")
+            : (checked ? "text-text-disabled line-through" : "text-text-primary")
         )}
       >
         {item.label}
@@ -132,9 +140,22 @@ export default function EditableChecklist({
 }: EditableChecklistProps) {
   const [newLabel, setNewLabel] = useState("");
   const addRef = useRef<HTMLInputElement>(null);
+  // View mode only: "did I do this" for the current visit — never written to
+  // the plan itself. Starts empty every time this list mounts (new plan
+  // selected, or navigating back to this tab), per how a checklist you run
+  // each session is supposed to behave.
+  const [checkedToday, setCheckedToday] = useState<Set<string>>(() => new Set());
 
   function toggle(id: string) {
     onChange(items.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item));
+  }
+
+  function toggleToday(id: string) {
+    setCheckedToday(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   function remove(id: string) {
@@ -166,7 +187,8 @@ export default function EditableChecklist({
         <ItemRow
           key={item.id}
           item={item}
-          onToggle={() => toggle(item.id)}
+          checked={editMode ? item.enabled : checkedToday.has(item.id)}
+          onToggle={() => editMode ? toggle(item.id) : toggleToday(item.id)}
           onDelete={() => remove(item.id)}
           onEdit={(text) => edit(item.id, text)}
           editMode={editMode}
@@ -198,7 +220,11 @@ export default function EditableChecklist({
       )}
 
       {items.length > 0 && (
-        <p className="text-[10px] text-text-disabled pt-1">{enabledCount}/{items.length} active</p>
+        <p className="text-[10px] text-text-disabled pt-1">
+          {editMode
+            ? `${enabledCount}/${items.length} active`
+            : `${checkedToday.size}/${items.length} completed`}
+        </p>
       )}
     </div>
   );

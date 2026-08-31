@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabase/client";
 import EmotionSelector from "@/components/journal/EmotionSelector";
 import ConfluenceChecklist from "@/components/journal/ConfluenceChecklist";
 import { hasPreciseSizing } from "@/components/trading/RiskCalculator";
+import { parseRuleArray } from "@/components/plan/planData";
 
 const INSTRUMENTS = ["EURUSD","GBPUSD","USDJPY","XAUUSD","AUDUSD","USDCAD","USDCHF","EURJPY","GBPJPY","NAS100","SP500"];
 const SESSIONS = ["LONDON","NEW_YORK","OVERLAP","TOKYO"] as const;
@@ -138,13 +139,20 @@ type JournalEntry = {
   lft_chart_url: string | null;
   review_plan: string | null;
   entry_confluences: Record<string, boolean> | null;
+  trade_management_checklist: Record<string, boolean> | null;
+  exit_checklist: Record<string, boolean> | null;
   trade_management_notes: string | null;
   entry_emotion: string | null;
   exit_emotion: string | null;
   ai_analysis: string | null;
 };
 
-type Plan = { id: string; name: string; is_active: boolean };
+type Plan = {
+  id: string; name: string; is_active: boolean;
+  entryCriteria: { id: string; label: string }[];
+  tradeManagementItems: { id: string; label: string }[];
+  exitCriteriaItems: { id: string; label: string }[];
+};
 
 type GlobalStats = { pnl: number; winRate: number | null; expectancy: number | null };
 
@@ -158,7 +166,9 @@ export default function TradeDetailPage() {
   const [trade, setTrade] = useState<Trade | null>(null);
   const [entry, setEntry] = useState<JournalEntry>({
     hft_chart_url: null, mft_chart_url: null, lft_chart_url: null,
-    review_plan: null, entry_confluences: null, trade_management_notes: null,
+    review_plan: null, entry_confluences: null,
+    trade_management_checklist: null, exit_checklist: null,
+    trade_management_notes: null,
     entry_emotion: null, exit_emotion: null, ai_analysis: null,
   });
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -250,8 +260,21 @@ export default function TradeDetailPage() {
         setScreenshots(((je as { screenshots?: Screenshot[] }).screenshots) ?? []);
       }
 
-      const { data: pl } = await supabase.from("plans").select("id, name, is_active").eq("user_id", uid);
-      if (pl) setPlans(pl as Plan[]);
+      const { data: pl } = await supabase
+        .from("plans")
+        .select("id, name, is_active, entry_criteria, trade_management_rules, exit_criteria")
+        .eq("user_id", uid);
+      if (pl) {
+        setPlans((pl as unknown as {
+          id: string; name: string; is_active: boolean;
+          entry_criteria: unknown; trade_management_rules: unknown; exit_criteria: unknown;
+        }[]).map(p => ({
+          id: p.id, name: p.name, is_active: p.is_active,
+          entryCriteria: parseRuleArray(p.entry_criteria),
+          tradeManagementItems: parseRuleArray(p.trade_management_rules),
+          exitCriteriaItems: parseRuleArray(p.exit_criteria),
+        })));
+      }
 
       // Adjacent trades + global stats
       const { data: all } = await supabase
@@ -317,10 +340,15 @@ export default function TradeDetailPage() {
     return `1:${(reward / risk).toFixed(2)}`;
   }, [entryPrice, sl, tp]);
 
-  const selectedConfluences = useMemo(() => {
-    if (!entry.entry_confluences) return [];
-    return Object.entries(entry.entry_confluences).filter(([, v]) => v).map(([k]) => k);
-  }, [entry.entry_confluences]);
+  const selectedPlan = useMemo(() => plans.find(p => p.id === planId) ?? null, [plans, planId]);
+
+  function selectedIdsOf(rec: Record<string, boolean> | null) {
+    if (!rec) return [];
+    return Object.entries(rec).filter(([, v]) => v).map(([k]) => k);
+  }
+  const selectedConfluences = useMemo(() => selectedIdsOf(entry.entry_confluences), [entry.entry_confluences]);
+  const selectedTradeManagement = useMemo(() => selectedIdsOf(entry.trade_management_checklist), [entry.trade_management_checklist]);
+  const selectedExitChecklist = useMemo(() => selectedIdsOf(entry.exit_checklist), [entry.exit_checklist]);
 
   const mistakesList = mistakesText.split("\n").map(s => s.trim()).filter(Boolean);
   const lessonsList = (entry.trade_management_notes ?? "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 4);
@@ -501,6 +529,20 @@ export default function TradeDetailPage() {
     for (const s of sel) obj[s] = true;
     setEntry(e => ({ ...e, entry_confluences: obj }));
     await saveEntryField({ entry_confluences: obj });
+  }
+
+  async function handleTradeManagementChecklistChange(sel: string[]) {
+    const obj: Record<string, boolean> = {};
+    for (const s of sel) obj[s] = true;
+    setEntry(e => ({ ...e, trade_management_checklist: obj }));
+    await saveEntryField({ trade_management_checklist: obj });
+  }
+
+  async function handleExitChecklistChange(sel: string[]) {
+    const obj: Record<string, boolean> = {};
+    for (const s of sel) obj[s] = true;
+    setEntry(e => ({ ...e, exit_checklist: obj }));
+    await saveEntryField({ exit_checklist: obj });
   }
 
   if (!trade) {
@@ -937,22 +979,36 @@ export default function TradeDetailPage() {
                   </div>
                 </div>
 
-                {/* Entry Confluences */}
+                {/* Entry Confluences — the linked plan's own entry criteria when set, generic list otherwise */}
                 <div className="card p-5 space-y-3">
                   <div>
                     <h4 className="text-sm font-medium text-text-primary">Entry Confluences</h4>
-                    <p className="text-xs text-text-secondary">Select all that apply</p>
+                    <p className="text-xs text-text-secondary">
+                      {selectedPlan ? `Checked against "${selectedPlan.name}"` : "Select all that apply"}
+                    </p>
                   </div>
-                  <ConfluenceChecklist selected={selectedConfluences} onChange={handleConfluencesChange} />
+                  <ConfluenceChecklist
+                    selected={selectedConfluences}
+                    onChange={handleConfluencesChange}
+                    items={selectedPlan?.entryCriteria}
+                    emptyLabel="This plan has no entry criteria defined yet — add them in Plan Mode."
+                  />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className={cn("grid grid-cols-1 gap-4", (selectedPlan?.exitCriteriaItems.length ?? 0) > 0 ? "lg:grid-cols-3" : "lg:grid-cols-2")}>
                   {/* Trade Management */}
                   <div className="card p-5 space-y-3">
                     <div>
                       <h4 className="text-sm font-medium text-text-primary">Trade Management</h4>
                       <p className="text-xs text-text-secondary">How did you manage this trade?</p>
                     </div>
+                    {(selectedPlan?.tradeManagementItems.length ?? 0) > 0 && (
+                      <ConfluenceChecklist
+                        selected={selectedTradeManagement}
+                        onChange={handleTradeManagementChecklistChange}
+                        items={selectedPlan!.tradeManagementItems}
+                      />
+                    )}
                     <textarea
                       value={entry.trade_management_notes ?? ""}
                       onChange={e => setEntry(en => ({ ...en, trade_management_notes: e.target.value || null }))}
@@ -961,6 +1017,21 @@ export default function TradeDetailPage() {
                       className="w-full bg-surface-hi border border-border-light rounded-xl p-3 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent resize-none min-h-[100px]"
                     />
                   </div>
+
+                  {/* Exit — only shown when the linked plan defines exit criteria */}
+                  {(selectedPlan?.exitCriteriaItems.length ?? 0) > 0 && (
+                    <div className="card p-5 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-medium text-text-primary">Exit</h4>
+                        <p className="text-xs text-text-secondary">Which exit criteria did you follow?</p>
+                      </div>
+                      <ConfluenceChecklist
+                        selected={selectedExitChecklist}
+                        onChange={handleExitChecklistChange}
+                        items={selectedPlan!.exitCriteriaItems}
+                      />
+                    </div>
+                  )}
 
                   {/* Mistakes */}
                   <div className="card p-5 space-y-3">

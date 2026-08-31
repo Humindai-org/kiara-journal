@@ -39,14 +39,6 @@ const TABS: { key: TabKey; label: string; Icon: React.ElementType }[] = [
   { key: "stats",     label: "Statistics",        Icon: BarChart2 },
 ];
 
-// Decorative sparkline point sets — varied uptrends
-const SPARKLINES: [number, number][][] = [
-  [[0,10],[18,9],[32,10],[48,7],[62,5],[76,6],[90,4],[105,3],[120,1],[135,0]],
-  [[0,9],[18,8],[32,7],[48,8],[62,6],[76,5],[90,6],[105,4],[120,2],[135,1]],
-  [[0,8],[18,9],[32,6],[48,7],[62,5],[76,4],[90,3],[105,2],[120,1],[135,0]],
-  [[0,10],[18,9],[32,8],[48,9],[62,7],[76,6],[90,7],[105,5],[120,3],[135,0]],
-];
-
 // ─── DB ↔ Form converters ────────────────────────────────────
 
 function formToDbPayload(form: PlanFormData, userId: string, chartingImage?: string | null) {
@@ -129,35 +121,31 @@ function getModelAcronym(label: string): string {
   return d >= 0 ? label.slice(0, d) : label.slice(0, 10);
 }
 
-// ─── Sparkline SVG ───────────────────────────────────────────
-
-function Sparkline({ idx = 0, color = "#9d8bff" }: { idx?: number; color?: string }) {
-  const pts = SPARKLINES[idx % SPARKLINES.length];
-  const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
-  return (
-    <svg viewBox="0 0 135 10" className="w-full h-12" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={`sg${idx}`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor={color} stopOpacity="0.4" />
-          <stop offset="100%" stopColor={color} stopOpacity="1" />
-        </linearGradient>
-      </defs>
-      <path d={d} fill="none" stroke={`url(#sg${idx})`} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 // ─── Strategy Card ───────────────────────────────────────────
 
 interface StrategyCardProps {
   plan: Plan;
-  idx: number;
+  stat?: { count: number; winRate: number; adherence: number | null };
   selected: boolean;
   onClick: () => void;
   onDuplicate: (e: React.MouseEvent) => void;
 }
 
-function StrategyCard({ plan, idx, selected, onClick, onDuplicate }: StrategyCardProps) {
+// Replaces the old decorative sparkline: % of this plan's linked trades
+// marked "followed plan" — same definition the Dashboard uses for discipline.
+function AdherenceBar({ adherence }: { adherence: number | null }) {
+  if (adherence == null) {
+    return <div className="h-1.5 rounded-full bg-surface-hi" />;
+  }
+  const color = adherence >= 80 ? "bg-profit" : adherence >= 60 ? "bg-warning" : "bg-loss";
+  return (
+    <div className="h-1.5 rounded-full bg-surface-hi overflow-hidden">
+      <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${adherence}%` }} />
+    </div>
+  );
+}
+
+function StrategyCard({ plan, stat, selected, onClick, onDuplicate }: StrategyCardProps) {
   return (
     <button
       onClick={onClick}
@@ -188,9 +176,12 @@ function StrategyCard({ plan, idx, selected, onClick, onDuplicate }: StrategyCar
         <p className="text-[10px] text-text-disabled mt-0.5">{plan.plan_type}</p>
       </div>
 
-      {/* Sparkline */}
-      <div className="py-0.5">
-        <Sparkline idx={idx} color={selected ? "#9d8bff" : "#6b6494"} />
+      {/* Adherence — % of linked trades where the plan was actually followed */}
+      <div className="py-0.5 space-y-1">
+        <AdherenceBar adherence={stat?.adherence ?? null} />
+        <p className="text-[9px] text-text-disabled">
+          {!stat || stat.count === 0 ? "No trades yet" : stat.adherence == null ? "Not yet reviewed" : `${stat.adherence.toFixed(0)}% adherence`}
+        </p>
       </div>
 
       {/* Metrics row */}
@@ -198,13 +189,13 @@ function StrategyCard({ plan, idx, selected, onClick, onDuplicate }: StrategyCar
         <div>
           <p className="text-[9px] text-text-disabled">Win Rate</p>
           <p className={cn("text-xs font-bold font-mono", selected ? "text-accent" : "text-text-secondary")}>
-            —%
+            {stat && stat.count > 0 ? `${stat.winRate.toFixed(0)}%` : "—%"}
           </p>
         </div>
         <div className="text-right">
           <p className="text-[9px] text-text-disabled">Trades</p>
           <p className={cn("text-xs font-bold font-mono", selected ? "text-accent" : "text-text-secondary")}>
-            0
+            {stat?.count ?? 0}
           </p>
         </div>
         <span className={cn(
@@ -412,6 +403,21 @@ function MgmtRow({ item }: { item: RuleItem }) {
           </>
         ) : item.label}
       </span>
+    </div>
+  );
+}
+
+// ─── Statistics: per-rule compliance bar ───────────────────────
+function ComplianceRow({ label, rate }: { label: string; rate: number }) {
+  const bar = rate >= 80 ? "bg-profit" : rate >= 60 ? "bg-warning" : "bg-loss";
+  const txt = rate >= 80 ? "text-profit" : rate >= 60 ? "text-warning" : "text-loss";
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-xs text-text-secondary flex-1 min-w-0 truncate">{label}</span>
+      <div className="w-24 h-1.5 bg-surface-2 rounded-full overflow-hidden shrink-0">
+        <div className={cn("h-full rounded-full transition-all", bar)} style={{ width: `${rate}%` }} />
+      </div>
+      <span className={cn("text-xs font-mono w-10 text-right shrink-0", txt)}>{rate.toFixed(0)}%</span>
     </div>
   );
 }
@@ -712,6 +718,14 @@ export default function PlanModePage() {
   // Ref to guard fetchPlans from overriding form when in new-plan mode
   const isNewRef = useRef(false);
 
+  // Real per-plan numbers — replaces the decorative sparkline/placeholder
+  // Win Rate/Trades on each StrategyCard, and feeds the Statistics tab.
+  type PlanStat = { count: number; winRate: number; adherence: number | null };
+  const [planStats, setPlanStats] = useState<Record<string, PlanStat>>({});
+  type Compliance = { entry: Record<string, number>; management: Record<string, number>; exit: Record<string, number> };
+  const [itemCompliance, setItemCompliance] = useState<Compliance | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const supabase = useMemo(() => createClient(), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -748,6 +762,79 @@ export default function PlanModePage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // One lightweight query covers every plan card's Win Rate/Trades/Adherence.
+  useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from("trades")
+      .select("plan_id, net_pnl, followed_plan")
+      .eq("user_id", userId)
+      .not("plan_id", "is", null)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const rows = data as { plan_id: string; net_pnl: number | null; followed_plan: boolean | null }[];
+        const byPlan: Record<string, typeof rows> = {};
+        for (const r of rows) (byPlan[r.plan_id] ??= []).push(r);
+        const stats: Record<string, PlanStat> = {};
+        for (const [pid, trades] of Object.entries(byPlan)) {
+          const wins = trades.filter(t => (t.net_pnl ?? 0) > 0).length;
+          const evaluated = trades.filter(t => t.followed_plan != null);
+          const followed = evaluated.filter(t => t.followed_plan === true).length;
+          stats[pid] = {
+            count: trades.length,
+            winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
+            adherence: evaluated.length > 0 ? (followed / evaluated.length) * 100 : null,
+          };
+        }
+        setPlanStats(stats);
+      });
+  }, [supabase, userId]);
+
+  // Per-item compliance for the plan currently open in the Statistics tab —
+  // scoped to one plan (unlike planStats above) since it needs journal_entries too.
+  useEffect(() => {
+    if (activeTab !== "stats" || !selectedId || isNew) { setItemCompliance(null); return; }
+    let cancelled = false;
+    setStatsLoading(true);
+    (async () => {
+      const { data: tr } = await supabase.from("trades").select("id").eq("plan_id", selectedId);
+      const tradeIds = (tr as { id: string }[] | null)?.map(t => t.id) ?? [];
+      if (tradeIds.length === 0) {
+        if (!cancelled) { setItemCompliance({ entry: {}, management: {}, exit: {} }); setStatsLoading(false); }
+        return;
+      }
+      const { data: je } = await supabase
+        .from("journal_entries")
+        .select("entry_confluences, trade_management_checklist, exit_checklist")
+        .in("trade_id", tradeIds);
+      const entries = (je as {
+        entry_confluences: Record<string, boolean> | null;
+        trade_management_checklist: Record<string, boolean> | null;
+        exit_checklist: Record<string, boolean> | null;
+      }[] | null) ?? [];
+      const total = entries.length;
+      function rate(items: RuleItem[], field: "entry_confluences" | "trade_management_checklist" | "exit_checklist") {
+        const out: Record<string, number> = {};
+        if (total === 0) return out;
+        for (const item of items) {
+          const hits = entries.filter(e => e[field]?.[item.id]).length;
+          out[item.id] = (hits / total) * 100;
+        }
+        return out;
+      }
+      if (!cancelled) {
+        setItemCompliance({
+          entry: rate(form.confluence_items, "entry_confluences"),
+          management: rate(form.trade_management_items, "trade_management_checklist"),
+          exit: rate(form.exit_criteria_items, "exit_checklist"),
+        });
+        setStatsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedId, isNew, supabase]);
 
   function selectPlan(plan: Plan) {
     isNewRef.current = false;
@@ -895,18 +982,15 @@ export default function PlanModePage() {
 
   const ResumenGrid = () => (
     <div className="p-4 space-y-3">
-      {/* Top row: 4 columns */}
-      <div className="grid gap-3 min-w-0" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,1.1fr)" }}>
+      {/* Row 1: process inputs — Charting Process only appears once an image is uploaded */}
+      <div className={cn("grid gap-3 min-w-0", chartingImage ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2")}>
 
-        {/* Proceso de Charting */}
-        <div className="card p-4 min-h-0 min-w-0">
-          <p className="section-title mb-3">CHARTING PROCESS</p>
-          {chartingImage ? (
+        {chartingImage && (
+          <div className="card p-4 min-h-0 min-w-0">
+            <p className="section-title mb-3">CHARTING PROCESS</p>
             <img src={chartingImage} alt="Chart" className="w-full rounded-lg object-contain max-h-44" />
-          ) : (
-            <ChartingDiagram items={form.charting_items} />
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Criterios de Entrada */}
         <div className="card p-4 min-w-0">
@@ -949,65 +1033,65 @@ export default function PlanModePage() {
             )}
           </div>
         </div>
+      </div>
 
-        {/* Right column: stacked cards */}
-        <div className="flex flex-col gap-3 min-w-0">
-          {/* Controles de Riesgo */}
-          <div className="card p-3 min-w-0">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Shield className="size-3.5 text-accent" />
-              <p className="section-title text-[10px]">RISK CONTROLS</p>
-            </div>
-            <div className="space-y-1.5">
-              {[
-                { label: "Max. daily risk",       value: `$${form.max_daily_loss}` },
-                { label: "Max. risk per trade",   value: `${form.risk_per_trade_percent}%` },
-                { label: "Max. daily trades",     value: String(form.max_trades_per_day) },
-                { label: "Max. drawdown",         value: "10%" },
-              ].map(({ label, value }) => (
-                <div key={label} className="flex items-start justify-between gap-2 min-w-0">
-                  <span className="text-[10px] leading-snug text-text-disabled min-w-0 break-words">{label}</span>
-                  <span className="text-[10px] font-mono font-semibold text-text-secondary shrink-0 whitespace-nowrap">{value}</span>
-                </div>
-              ))}
-            </div>
+      {/* Row 2: constraints & notes — same width as row 1, no more cramped sidebar */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+        {/* Controles de Riesgo */}
+        <div className="card p-4 min-w-0">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Shield className="size-3.5 text-accent" />
+            <p className="section-title">RISK CONTROLS</p>
           </div>
+          <div className="space-y-1.5">
+            {[
+              { label: "Max. daily risk",       value: `$${form.max_daily_loss}` },
+              { label: "Max. risk per trade",   value: `${form.risk_per_trade_percent}%` },
+              { label: "Max. daily trades",     value: String(form.max_trades_per_day) },
+              { label: "Max. drawdown",         value: "10%" },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex items-start justify-between gap-2 min-w-0">
+                <span className="text-xs leading-snug text-text-disabled min-w-0 break-words">{label}</span>
+                <span className="text-xs font-mono font-semibold text-text-secondary shrink-0 whitespace-nowrap">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-          {/* Reglas de Disciplina */}
-          <div className="card p-3 min-w-0">
-            <div className="flex items-center gap-1.5 mb-2">
-              <BookOpen className="size-3.5 text-accent" />
-              <p className="section-title text-[10px]">DISCIPLINE RULES</p>
-            </div>
-            <div className="space-y-1">
-              {(form.notes_items.length > 0 ? form.notes_items.slice(0, 5) : [
-                { id: "d1", label: "Follow the plan 100%",            enabled: true },
-                { id: "d2", label: "Don't trade outside Killzones",   enabled: true },
-                { id: "d3", label: "Don't average losing positions",  enabled: true },
-                { id: "d4", label: "Accept the stop loss",            enabled: true },
-                { id: "d5", label: "Review and improve the plan weekly", enabled: true },
-              ] as RuleItem[]).map((item) => (
-                <p key={item.id} className="text-[10px] text-text-secondary leading-snug break-words">{item.label}</p>
-              ))}
-            </div>
+        {/* Reglas de Disciplina */}
+        <div className="card p-4 min-w-0">
+          <div className="flex items-center gap-1.5 mb-3">
+            <BookOpen className="size-3.5 text-accent" />
+            <p className="section-title">DISCIPLINE RULES</p>
           </div>
+          <div className="space-y-1.5">
+            {(form.notes_items.length > 0 ? form.notes_items.slice(0, 5) : [
+              { id: "d1", label: "Follow the plan 100%",            enabled: true },
+              { id: "d2", label: "Don't trade outside Killzones",   enabled: true },
+              { id: "d3", label: "Don't average losing positions",  enabled: true },
+              { id: "d4", label: "Accept the stop loss",            enabled: true },
+              { id: "d5", label: "Review and improve the plan weekly", enabled: true },
+            ] as RuleItem[]).map((item) => (
+              <p key={item.id} className="text-xs text-text-secondary leading-snug break-words">{item.label}</p>
+            ))}
+          </div>
+        </div>
 
-          {/* Notas del Plan */}
-          <div className="card p-3 flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-2">
-              <FileText className="size-3.5 text-accent" />
-              <p className="section-title text-[10px]">PLAN NOTES</p>
-            </div>
-            <p className="text-[10px] text-text-secondary leading-relaxed break-words">
-              {form.notes_items.length > 0
-                ? form.notes_items.slice(0, 3).map(i => i.label).join(" · ")
-                : "Add notes in the Plan Notes tab to remind yourself before trading."}
-            </p>
+        {/* Notas del Plan */}
+        <div className="card p-4 min-w-0">
+          <div className="flex items-center gap-1.5 mb-3">
+            <FileText className="size-3.5 text-accent" />
+            <p className="section-title">PLAN NOTES</p>
           </div>
+          <p className="text-xs text-text-secondary leading-relaxed break-words">
+            {form.notes_items.length > 0
+              ? form.notes_items.slice(0, 3).map(i => i.label).join(" · ")
+              : "Add notes in the Plan Notes tab to remind yourself before trading."}
+          </p>
         </div>
       </div>
 
-      {/* Bottom row: entry models + exit criteria */}
+      {/* Row 3: entry models + exit criteria */}
       <div className="grid gap-3 min-w-0" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,2fr)" }}>
 
         {/* Modelos de Entrada */}
@@ -1109,9 +1193,9 @@ export default function PlanModePage() {
             ))
           ) : (
             <>
-              {filteredPlans.map((plan, idx) => (
+              {filteredPlans.map((plan) => (
                 <StrategyCard
-                  key={plan.id} plan={plan} idx={idx}
+                  key={plan.id} plan={plan} stat={planStats[plan.id]}
                   selected={selectedId === plan.id && !isNew}
                   onClick={() => selectPlan(plan)}
                   onDuplicate={(e) => { e.stopPropagation(); handleDuplicate(plan); }}
@@ -1148,8 +1232,10 @@ export default function PlanModePage() {
 
           {/* Plan Detail Bar */}
           <div className="shrink-0 px-6 py-3 border-b border-border bg-surface/10">
-            <div className="flex items-center justify-between gap-6">
-              {/* Left: name + type + status */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+              {/* Left: name + type + status — full width until lg, so a long name
+                  wraps at most onto a couple of lines instead of being squeezed
+                  word-by-word against the metadata/action buttons on the right. */}
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   {editMode ? (
@@ -1189,7 +1275,7 @@ export default function PlanModePage() {
               </div>
 
               {/* Right: metadata + actions */}
-              <div className="flex items-center gap-4 shrink-0">
+              <div className="flex items-center gap-4 flex-wrap lg:flex-nowrap lg:shrink-0">
                 {/* Metadata columns */}
                 {selectedPlan && !isNew && (
                   <div className="hidden md:flex items-center gap-5">
@@ -1325,6 +1411,7 @@ export default function PlanModePage() {
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
+                        key={selectedId ?? "new"}
                         items={form.charting_items}
                         onChange={(items) => set("charting_items", items)}
                         addPlaceholder="Add charting step..."
@@ -1356,6 +1443,7 @@ export default function PlanModePage() {
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
+                        key={selectedId ?? "new"}
                         items={form.confluence_items}
                         onChange={(items) => set("confluence_items", items)}
                         addPlaceholder="Add entry criterion..."
@@ -1375,6 +1463,7 @@ export default function PlanModePage() {
                     <div className="card p-4">
                       {editMode ? (
                         <EditableChecklist
+                          key={selectedId ?? "new"}
                           items={form.trade_management_items}
                           onChange={(items) => set("trade_management_items", items)}
                           addPlaceholder="Add management rule (e.g.: SL: 1R)"
@@ -1404,6 +1493,7 @@ export default function PlanModePage() {
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
+                        key={selectedId ?? "new"}
                         items={form.exit_criteria_items}
                         onChange={(items) => set("exit_criteria_items", items)}
                         addPlaceholder="Add exit criterion..."
@@ -1422,6 +1512,7 @@ export default function PlanModePage() {
                     </div>
                     <div className="card p-4">
                       <EditableChecklist
+                        key={selectedId ?? "new"}
                         items={form.notes_items}
                         onChange={(items) => set("notes_items", items)}
                         addPlaceholder="Add reminder..."
@@ -1459,19 +1550,72 @@ export default function PlanModePage() {
                 )}
 
                 {/* STATS */}
-                {activeTab === "stats" && (
+                {activeTab === "stats" && (() => {
+                  const stat = selectedId ? planStats[selectedId] : undefined;
+                  const hasTrades = (stat?.count ?? 0) > 0;
+                  return (
                   <>
                     <div>
                       <h3 className="text-sm font-semibold text-text-primary mb-1">Statistics</h3>
                       <p className="text-xs text-text-disabled">Performance of this plan in the Journal</p>
                     </div>
-                    <div className="card p-10 text-center space-y-3">
-                      <BarChart2 className="size-8 text-text-disabled mx-auto" />
-                      <p className="text-text-secondary text-sm">No data available</p>
-                      <p className="text-xs text-text-disabled max-w-xs mx-auto">
-                        Statistics will be enabled when you link trades from your Journal to this plan.
-                      </p>
-                    </div>
+
+                    {!hasTrades ? (
+                      <div className="card p-10 text-center space-y-3">
+                        <BarChart2 className="size-8 text-text-disabled mx-auto" />
+                        <p className="text-text-secondary text-sm">No data available</p>
+                        <p className="text-xs text-text-disabled max-w-xs mx-auto">
+                          Statistics will be enabled when you link trades from your Journal to this plan.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Real numbers from linked trades */}
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="card p-4">
+                            <p className="text-[10px] text-text-disabled uppercase tracking-wider">Trades</p>
+                            <p className="text-2xl font-mono font-semibold text-text-primary mt-1">{stat!.count}</p>
+                          </div>
+                          <div className="card p-4">
+                            <p className="text-[10px] text-text-disabled uppercase tracking-wider">Win Rate</p>
+                            <p className={cn("text-2xl font-mono font-semibold mt-1", stat!.winRate >= 50 ? "text-profit" : "text-warning")}>
+                              {stat!.winRate.toFixed(0)}%
+                            </p>
+                          </div>
+                          <div className="card p-4">
+                            <p className="text-[10px] text-text-disabled uppercase tracking-wider">Adherence</p>
+                            <p className={cn(
+                              "text-2xl font-mono font-semibold mt-1",
+                              stat!.adherence == null ? "text-text-disabled" : stat!.adherence >= 80 ? "text-profit" : stat!.adherence >= 60 ? "text-warning" : "text-loss"
+                            )}>
+                              {stat!.adherence == null ? "—" : `${stat!.adherence.toFixed(0)}%`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Per-rule compliance, from the Entry/Trade Management/Exit checklists checked off per trade */}
+                        {statsLoading ? (
+                          <p className="text-xs text-text-disabled">Loading rule compliance…</p>
+                        ) : itemCompliance && (
+                          <div className="space-y-3">
+                            {([
+                              ["Entry Criteria", form.confluence_items, itemCompliance.entry],
+                              ["Trade Management", form.trade_management_items, itemCompliance.management],
+                              ["Exit Criteria", form.exit_criteria_items, itemCompliance.exit],
+                            ] as const).map(([title, items, rates]) => items.length > 0 && (
+                              <div key={title} className="card p-4 space-y-2">
+                                <p className="section-title">{title}</p>
+                                <div className="space-y-1.5">
+                                  {items.map(item => (
+                                    <ComplianceRow key={item.id} label={item.label} rate={rates[item.id] ?? 0} />
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
 
                     {/* Score summary */}
                     {totalCriteria > 0 && (
@@ -1495,7 +1639,8 @@ export default function PlanModePage() {
                       </div>
                     )}
                   </>
-                )}
+                  );
+                })()}
 
               </div>
             )}

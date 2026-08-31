@@ -126,6 +126,8 @@ export interface Database {
           lft_chart_url: string | null;
           review_plan: string | null;
           entry_confluences: Json | null;
+          trade_management_checklist: Json | null;
+          exit_checklist: Json | null;
           trade_management_notes: string | null;
           entry_emotion: string | null;
           exit_emotion: string | null;

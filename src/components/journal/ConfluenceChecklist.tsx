@@ -17,33 +17,49 @@ export const CONFLUENCE_ITEMS = [
   "Others",
 ];
 
+export interface ChecklistItem {
+  id: string;
+  label: string;
+}
+
 interface ConfluenceChecklistProps {
   selected: string[];
   onChange: (selected: string[]) => void;
   readonly?: boolean;
+  // When omitted, falls back to the generic CONFLUENCE_ITEMS list keyed by
+  // label (today's behavior — used when the trade has no plan linked).
+  // When provided, renders the linked plan's own rules instead, keyed by id.
+  items?: ChecklistItem[];
+  emptyLabel?: string;
 }
 
-export default function ConfluenceChecklist({ selected, onChange, readonly }: ConfluenceChecklistProps) {
-  function toggle(item: string) {
+export default function ConfluenceChecklist({ selected, onChange, readonly, items, emptyLabel }: ConfluenceChecklistProps) {
+  const options: ChecklistItem[] = items ?? CONFLUENCE_ITEMS.map(label => ({ id: label, label }));
+
+  function toggle(id: string) {
     if (readonly) return;
     onChange(
-      selected.includes(item)
-        ? selected.filter(i => i !== item)
-        : [...selected, item]
+      selected.includes(id)
+        ? selected.filter(i => i !== id)
+        : [...selected, id]
     );
+  }
+
+  if (options.length === 0) {
+    return <p className="text-xs text-text-disabled py-2">{emptyLabel ?? "No rules defined for this plan yet."}</p>;
   }
 
   return (
     <div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {CONFLUENCE_ITEMS.map(item => {
-          const isSelected = selected.includes(item);
+        {options.map(({ id, label }) => {
+          const isSelected = selected.includes(id);
           return (
             <button
-              key={item}
+              key={id}
               type="button"
               disabled={readonly}
-              onClick={() => toggle(item)}
+              onClick={() => toggle(id)}
               className={cn(
                 "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left border transition-colors",
                 isSelected
@@ -66,7 +82,7 @@ export default function ConfluenceChecklist({ selected, onChange, readonly }: Co
                 "text-xs truncate",
                 isSelected ? "text-text-primary" : "text-text-secondary"
               )}>
-                {item}
+                {label}
               </span>
             </button>
           );
