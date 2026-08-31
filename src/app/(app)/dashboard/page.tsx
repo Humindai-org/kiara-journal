@@ -163,11 +163,12 @@ function fmtUsd(n: number, sign = false) {
 
 // Long balances ($200,000.00) don't fit at text-2xl inside a 7-up grid — scale
 // the value down by character count instead of letting it spill past the card.
+// Sized conservatively enough to fit the tightest layout: a 2-up mobile grid.
 function kpiValueSize(value: string) {
   if (value.length <= 8) return "text-2xl";
-  if (value.length <= 11) return "text-xl";
-  if (value.length <= 14) return "text-lg";
-  return "text-base";
+  if (value.length <= 10) return "text-xl";
+  if (value.length <= 13) return "text-base";
+  return "text-sm";
 }
 
 function KpiCard({ label, value, sub, color, icon: Icon, onClick }: {
@@ -181,7 +182,7 @@ function KpiCard({ label, value, sub, color, icon: Icon, onClick }: {
         <p className="text-xs text-text-secondary truncate">{label}</p>
         <Icon className="size-4 text-text-disabled shrink-0" />
       </div>
-      <p className={cn("font-mono font-semibold tabular-nums truncate", kpiValueSize(value), color ?? "text-text-primary")}>
+      <p className={cn("font-mono font-semibold tabular-nums whitespace-nowrap", kpiValueSize(value), color ?? "text-text-primary")}>
         {value}
       </p>
       {sub && <p className="text-[11px] text-text-disabled mt-1 truncate">{sub}</p>}
