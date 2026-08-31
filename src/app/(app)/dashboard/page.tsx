@@ -161,6 +161,15 @@ function fmtUsd(n: number, sign = false) {
   return `${s}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Long balances ($200,000.00) don't fit at text-2xl inside a 7-up grid — scale
+// the value down by character count instead of letting it spill past the card.
+function kpiValueSize(value: string) {
+  if (value.length <= 8) return "text-2xl";
+  if (value.length <= 11) return "text-xl";
+  if (value.length <= 14) return "text-lg";
+  return "text-base";
+}
+
 function KpiCard({ label, value, sub, color, icon: Icon, onClick }: {
   label: string; value: string; sub?: string; color?: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -169,24 +178,26 @@ function KpiCard({ label, value, sub, color, icon: Icon, onClick }: {
   const inner = (
     <>
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-text-secondary">{label}</p>
-        <Icon className="size-4 text-text-disabled" />
+        <p className="text-xs text-text-secondary truncate">{label}</p>
+        <Icon className="size-4 text-text-disabled shrink-0" />
       </div>
-      <p className={cn("text-2xl font-mono font-semibold", color ?? "text-text-primary")}>{value}</p>
-      {sub && <p className="text-[11px] text-text-disabled mt-1">{sub}</p>}
+      <p className={cn("font-mono font-semibold tabular-nums truncate", kpiValueSize(value), color ?? "text-text-primary")}>
+        {value}
+      </p>
+      {sub && <p className="text-[11px] text-text-disabled mt-1 truncate">{sub}</p>}
     </>
   );
   if (onClick) {
     return (
       <button
         onClick={onClick}
-        className="card-light p-4 text-left hover:bg-surface-hi transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        className="card-light p-4 text-left min-w-0 hover:bg-surface-hi transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         {inner}
       </button>
     );
   }
-  return <div className="card-light p-4">{inner}</div>;
+  return <div className="card-light p-4 min-w-0">{inner}</div>;
 }
 
 // ─── Objective rule adherence ─────────────────────────────────
@@ -515,7 +526,7 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-y-auto p-6 space-y-4">
 
         {/* ── KPI row ───────────────────────────────────── */}
-        <div className="grid grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           <KpiCard label="Balance" value={`$${fmtUsd(stats.balance)}`} sub={account?.name ?? "—"} icon={Activity} />
           <KpiCard
             label="P&L total" value={`$${fmtUsd(stats.totalPnl, true)}`}
