@@ -1,3 +1,5 @@
+import type { PlanFormData } from "./PlanEditor";
+
 export interface RuleItem {
   id: string;
   label: string;
@@ -99,6 +101,81 @@ export function matvardNoteItems(): RuleItem[] {
     { id: "n4", label: "Ejecuta el proceso, no el resultado", enabled: true },
     { id: "n5", label: "Un día rojo ejecutando bien > un día verde por suerte", enabled: true },
   ];
+}
+
+// ─── Import de planes externos (ej. generados con Claude) ─────
+
+/**
+ * Formato de importación. Cada sección de checklist acepta tanto un array de
+ * strings simple (se generan id/enabled automáticamente) como RuleItem[]
+ * completo. Los campos numéricos son opcionales — lo que no venga en el JSON
+ * conserva el valor que ya tuviera el formulario.
+ */
+export interface ImportablePlan {
+  name?: string;
+  plan_type?: string;
+  charting_items?: (string | Partial<RuleItem>)[];
+  confluence_items?: (string | Partial<RuleItem>)[];
+  model_items?: (string | Partial<RuleItem>)[];
+  trade_management_items?: (string | Partial<RuleItem>)[];
+  exit_criteria_items?: (string | Partial<RuleItem>)[];
+  notes_items?: (string | Partial<RuleItem>)[];
+  trading_window_start?: string;
+  trading_window_end?: string;
+  min_confluences?: number;
+  max_consecutive_losses?: number;
+  max_trades_per_day?: number;
+  max_daily_loss?: number;
+  max_daily_profit?: number | null;
+  risk_per_trade_percent?: number;
+}
+
+function coerceImportItems(raw: unknown, prefix: string): RuleItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry, i) => {
+    if (typeof entry === "string") {
+      return { id: `${prefix}${i + 1}`, label: entry, enabled: true };
+    }
+    if (entry && typeof entry === "object" && "label" in entry) {
+      const e = entry as Partial<RuleItem>;
+      return {
+        id: e.id ?? `${prefix}${i + 1}`,
+        label: String(e.label),
+        enabled: e.enabled ?? true,
+        ...(e.isCustom !== undefined ? { isCustom: e.isCustom } : {}),
+        ...(e.diagramType !== undefined ? { diagramType: e.diagramType } : {}),
+      };
+    }
+    return { id: `${prefix}${i + 1}`, label: String(entry), enabled: true };
+  });
+}
+
+/** Importa un plan de un JSON externo, mezclándolo sobre el form actual (`prev`).
+ *  Nunca lanza excepción por campos ausentes — solo por JSON que no sea un objeto. */
+export function importPlanFromJSON(raw: unknown, prev: PlanFormData): PlanFormData {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("El archivo no contiene un objeto JSON de plan válido.");
+  }
+  const p = raw as ImportablePlan;
+  return {
+    ...prev,
+    name: typeof p.name === "string" && p.name.trim() ? p.name : prev.name,
+    plan_type: typeof p.plan_type === "string" && p.plan_type.trim() ? p.plan_type : prev.plan_type,
+    ...(p.charting_items ? { charting_items: coerceImportItems(p.charting_items, "c") } : {}),
+    ...(p.confluence_items ? { confluence_items: coerceImportItems(p.confluence_items, "g") } : {}),
+    ...(p.model_items ? { model_items: coerceImportItems(p.model_items, "m") } : {}),
+    ...(p.trade_management_items ? { trade_management_items: coerceImportItems(p.trade_management_items, "tm") } : {}),
+    ...(p.exit_criteria_items ? { exit_criteria_items: coerceImportItems(p.exit_criteria_items, "e") } : {}),
+    ...(p.notes_items ? { notes_items: coerceImportItems(p.notes_items, "n") } : {}),
+    ...(p.trading_window_start !== undefined ? { trading_window_start: p.trading_window_start } : {}),
+    ...(p.trading_window_end !== undefined ? { trading_window_end: p.trading_window_end } : {}),
+    ...(typeof p.min_confluences === "number" ? { min_confluences: p.min_confluences } : {}),
+    ...(typeof p.max_consecutive_losses === "number" ? { max_consecutive_losses: p.max_consecutive_losses } : {}),
+    ...(typeof p.max_trades_per_day === "number" ? { max_trades_per_day: p.max_trades_per_day } : {}),
+    ...(typeof p.max_daily_loss === "number" ? { max_daily_loss: p.max_daily_loss } : {}),
+    ...(p.max_daily_profit !== undefined ? { max_daily_profit: p.max_daily_profit ?? 0 } : {}),
+    ...(typeof p.risk_per_trade_percent === "number" ? { risk_per_trade_percent: p.risk_per_trade_percent } : {}),
+  };
 }
 
 // ─── Parse helpers ────────────────────────────────────────────

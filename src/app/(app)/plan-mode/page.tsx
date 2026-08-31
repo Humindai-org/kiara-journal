@@ -9,6 +9,7 @@ import {
   Pencil, Lock, Wand2, LayoutDashboard, ListChecks,
   ArrowUpRight, SlidersHorizontal, ArrowDownLeft,
   FileText, BookOpen, ImagePlus, X, Check, Save, Maximize2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
@@ -18,7 +19,7 @@ import {
   type PlanFormData,
   defaultPlanForm,
 } from "@/components/plan/PlanEditor";
-import { parseRuleArray } from "@/components/plan/planData";
+import { parseRuleArray, importPlanFromJSON } from "@/components/plan/planData";
 import type { RuleItem } from "@/components/plan/planData";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
@@ -706,6 +707,7 @@ export default function PlanModePage() {
   const [editMode, setEditMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [chartingImage, setChartingImage] = useState<string | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   // Ref to guard fetchPlans from overriding form when in new-plan mode
   const isNewRef = useRef(false);
@@ -768,6 +770,26 @@ export default function PlanModePage() {
   }
   function set<K extends keyof PlanFormData>(key: K, value: PlanFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-seleccionar el mismo archivo después
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        const imported = importPlanFromJSON(parsed, form);
+        setForm(imported);
+        if (!editMode) setEditMode(true);
+        toast.success(`Plan "${imported.name || "sin nombre"}" importado — revisa y pulsa Save para guardarlo`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo importar el archivo");
+      }
+    };
+    reader.onerror = () => toast.error("No se pudo leer el archivo");
+    reader.readAsText(file);
   }
 
   async function handleSave() {
@@ -1200,6 +1222,27 @@ export default function PlanModePage() {
                       <Wand2 className="size-3" />
                       MATVARD
                     </button>
+                  )}
+
+                  {editMode && (
+                    <>
+                      <input
+                        ref={importFileInputRef}
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={handleImportFile}
+                        className="hidden"
+                      />
+                      <button type="button"
+                        onClick={() => {
+                          const ok = hasAnyContent ? confirm("Import a plan? This overwrites the fields present in the file.") : true;
+                          if (ok) importFileInputRef.current?.click();
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent/40 text-accent text-xs hover:bg-accent/10 transition-colors">
+                        <Upload className="size-3" />
+                        Import JSON
+                      </button>
+                    </>
                   )}
 
                   <button type="button"
