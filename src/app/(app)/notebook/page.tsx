@@ -606,6 +606,7 @@ export default function NotebookPage() {
     setTradesLoading(true);
     const { data } = await supabase.from("trades")
       .select("id, instrument, direction, net_pnl, open_time")
+      .neq("status", "draft")
       .order("open_time", { ascending: false }).limit(50);
     setTradeList(((data as unknown) as Trade[]) ?? []);
     setTradesLoading(false);

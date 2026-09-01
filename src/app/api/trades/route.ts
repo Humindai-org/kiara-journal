@@ -30,6 +30,11 @@ export async function POST(req: NextRequest) {
     lots?: number;
     grade: SetupGrade;
     confirmed_warnings?: string[];
+    // Set when the trader already checked entry criteria for this setup
+    // before validating — promotes that draft row instead of inserting a
+    // duplicate. See src/components/trading/OrderForm.tsx.
+    draft_id?: string;
+    plan_id?: string | null;
   };
 
   try {
@@ -78,31 +83,46 @@ export async function POST(req: NextRequest) {
     ? Math.round((riskUsd / account.current_balance) * 10000) / 100
     : null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: trade, error: insertErr } = await (supabase as any)
-    .from("trades")
-    .insert({
-      account_id,
-      user_id: user.id,
-      instrument: symbol,
-      direction,
-      lot_size: lots,
-      entry_price: entry,
-      sl: sl || null,
-      tp: tp || null,
-      open_time: new Date().toISOString(),
-      status: "pending",
-      source: "MANUAL",
-      risk_r: rr > 0 ? rr : null,
-      risk_percent: riskPercent,
-      notes: `Grade: ${grade} | Pre-validado por Risk Guardian`,
-    })
-    .select("id, instrument, direction, lot_size, entry_price, sl, tp, status")
-    .single();
+  const payload = {
+    account_id,
+    user_id: user.id,
+    instrument: symbol,
+    direction,
+    lot_size: lots,
+    entry_price: entry,
+    sl: sl || null,
+    tp: tp || null,
+    open_time: new Date().toISOString(),
+    status: "pending",
+    source: "MANUAL",
+    risk_r: rr > 0 ? rr : null,
+    risk_percent: riskPercent,
+    plan_id: body.plan_id ?? null,
+    notes: `Grade: ${grade} | Pre-validado por Risk Guardian`,
+  };
 
-  if (insertErr) {
-    console.error("[trades] insert error:", insertErr.message);
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: trade, error: insertErr } = body.draft_id
+    ? await (supabase as any)
+        .from("trades")
+        // Promote the draft the trader was already checking entry criteria
+        // against, instead of inserting a second row for the same setup.
+        .update(payload)
+        .eq("id", body.draft_id)
+        .eq("account_id", account_id)
+        .eq("user_id", user.id)
+        .eq("status", "draft")
+        .select("id, instrument, direction, lot_size, entry_price, sl, tp, status")
+        .single()
+    : await (supabase as any)
+        .from("trades")
+        .insert(payload)
+        .select("id, instrument, direction, lot_size, entry_price, sl, tp, status")
+        .single();
+
+  if (insertErr || !trade) {
+    console.error("[trades] insert/promote error:", insertErr?.message);
+    return NextResponse.json({ error: insertErr?.message ?? "Draft trade not found" }, { status: 500 });
   }
 
   // Log discipline violations if any confirmed_warnings exist

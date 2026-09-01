@@ -334,13 +334,15 @@ export default function WeekReportPage() {
           .select("id, instrument, direction, net_pnl, open_time, session, return_r, risk_percent, tags, followed_plan")
           .eq("user_id", uid)
           .gte("open_time", fromISO)
-          .lte("open_time", toISO))
+          .lte("open_time", toISO)
+          .neq("status", "draft"))
           .order("open_time", { ascending: true }),
         scoped(supabase.from("trades")
           .select("net_pnl, return_r")
           .eq("user_id", uid)
           .gte("open_time", pwFromISO)
-          .lte("open_time", pwToISO)),
+          .lte("open_time", pwToISO)
+          .neq("status", "draft")),
         scoped(supabase.from("discipline_violations")
           .select("id, violation_type, date, description")
           .eq("user_id", uid)

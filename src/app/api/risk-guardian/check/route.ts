@@ -119,6 +119,9 @@ export async function POST(req: NextRequest) {
     .select("net_pnl, close_time, status, open_time")
     .eq("account_id", account_id)
     .gte("open_time", todayStart.toISOString())
+    // Drafts are setups still being evaluated (pre-trade checklist), not real
+    // trade attempts — must never count toward the daily trade limit.
+    .neq("status", "draft")
     .order("open_time", { ascending: true });
 
   const trades: Array<{ net_pnl: number | null; close_time: string | null; status: string; open_time: string }> = todayTrades ?? [];

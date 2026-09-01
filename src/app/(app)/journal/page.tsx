@@ -90,6 +90,7 @@ export default function JournalPage() {
       .eq("account_id", activeAccountId)
       .gte("open_time", from)
       .lte("open_time", to)
+      .neq("status", "draft")
       .order("open_time", { ascending: true });
     setTrades((data as Trade[]) ?? []);
     setLoading(false);

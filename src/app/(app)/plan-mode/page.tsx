@@ -774,6 +774,7 @@ export default function PlanModePage() {
       .select("plan_id, net_pnl, followed_plan")
       .eq("user_id", userId)
       .not("plan_id", "is", null)
+      .neq("status", "draft")
       .then(({ data, error }) => {
         if (error || !data) return;
         const rows = data as { plan_id: string; net_pnl: number | null; followed_plan: boolean | null }[];
@@ -801,7 +802,7 @@ export default function PlanModePage() {
     let cancelled = false;
     setStatsLoading(true);
     (async () => {
-      const { data: tr } = await supabase.from("trades").select("id").eq("plan_id", selectedId);
+      const { data: tr } = await supabase.from("trades").select("id").eq("plan_id", selectedId).neq("status", "draft");
       const tradeIds = (tr as { id: string }[] | null)?.map(t => t.id) ?? [];
       if (tradeIds.length === 0) {
         if (!cancelled) { setItemComplianceFor({ planId: selectedId, data: { entry: {}, management: {}, exit: {} } }); setStatsLoading(false); }

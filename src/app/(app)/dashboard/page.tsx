@@ -391,6 +391,7 @@ export default function DashboardPage() {
       .select("id, instrument, direction, net_pnl, return_r, open_time, close_time, session, followed_plan, notes")
       .eq("account_id", activeAccountId)
       .not("net_pnl", "is", null)
+      .neq("status", "draft")
       .order("open_time", { ascending: true })
       .then(({ data: rows }) => {
         setTrades((rows as unknown as Trade[]) ?? []);

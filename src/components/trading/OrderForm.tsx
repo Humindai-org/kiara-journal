@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Lock, AlertTriangle, Loader2, RefreshCw, CheckCircle } from "lucide-react";
+import Link from "next/link";
+import { Lock, AlertTriangle, Loader2, RefreshCw, CheckCircle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   calcLots,
@@ -18,6 +19,8 @@ import {
 import RiskGuardianModal from "./RiskGuardianModal";
 import type { GuardianResult } from "./RiskGuardianModal";
 import InstrumentCombobox from "./InstrumentCombobox";
+import ConfluenceChecklist from "@/components/journal/ConfluenceChecklist";
+import { createClient } from "@/lib/supabase/client";
 
 type Direction = "LONG" | "SHORT";
 type OrderType = "MARKET" | "LIMIT" | "STOP";
@@ -35,6 +38,12 @@ interface OrderFormProps {
   riskPercent?: number;
   /** Tradeable symbols for this account (forex majors by default). */
   instruments?: string[];
+  /** Active plan id — tags the trade so Plan Mode Statistics can find it. */
+  planId?: string;
+  /** Active plan's entry criteria (enabled rules only). Empty = no checklist shown. */
+  entryCriteria?: { id: string; label: string }[];
+  /** Active plan's minimum confluences required before taking a setup. */
+  minConfluences?: number;
 }
 
 export default function OrderForm({
@@ -47,7 +56,15 @@ export default function OrderForm({
   balance = 0,
   riskPercent = DEFAULT_RISK_PERCENT,
   instruments = FOREX_MAJORS,
+  planId,
+  entryCriteria = [],
+  minConfluences,
 }: OrderFormProps) {
+  const supabase = useMemo(() => createClient(), []);
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, [supabase]);
   const [instrument, setInstrument] = useState(instruments[0] ?? "EURUSD");
   const [direction, setDirection] = useState<Direction>("LONG");
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
@@ -70,6 +87,16 @@ export default function OrderForm({
   const [guardianResult, setGuardianResult] = useState<GuardianResult | null>(null);
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Pre-trade entry-criteria checklist. Checking a box lazily creates a
+  // 'draft' trade row (excluded from every trade count/stat in the app) so
+  // the check is saved for real from the first click — same journal_entries
+  // mechanism the trade-detail page already uses, just triggered earlier.
+  const [entryChecks, setEntryChecks] = useState<string[]>([]);
+  const [draftTradeId, setDraftTradeId] = useState<string | null>(null);
+  const [journalEntryId, setJournalEntryId] = useState<string | null>(null);
+  const [loggedTradeId, setLoggedTradeId] = useState<string | null>(null);
+  const draftInitRef = useRef<Promise<{ tradeId: string; entryId: string } | null> | null>(null);
 
   // Unused but kept to avoid breaking the TradeCounter prop contract
   void tradesUsed;
@@ -104,6 +131,82 @@ export default function OrderForm({
     const interval = setInterval(fetchPrice, 5000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [orderType, instrument]);
+
+  // Creates the draft trade + its journal_entries row on the first entry-
+  // criteria check, seeded with `initialConfluences` so there's no redundant
+  // second write. Ref-guarded so rapid-fire clicks share one in-flight
+  // creation instead of racing into duplicate rows.
+  const ensureDraftAndEntry = useCallback(async (
+    initialConfluences: Record<string, boolean>
+  ): Promise<{ tradeId: string; entryId: string } | null> => {
+    if (draftInitRef.current) return draftInitRef.current;
+    if (!accountId || !userId) return null;
+
+    const p = (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: tradeData, error: tradeErr } = await (supabase as any)
+        .from("trades")
+        .insert({
+          account_id: accountId,
+          user_id: userId,
+          instrument,
+          direction,
+          lot_size: 0,
+          entry_price: parseFloat(entry) || 0,
+          open_time: new Date().toISOString(),
+          status: "draft",
+          source: "MANUAL",
+          plan_id: planId ?? null,
+        })
+        .select("id")
+        .single();
+      if (tradeErr || !tradeData) return null;
+      const tradeId = (tradeData as { id: string }).id;
+      setDraftTradeId(tradeId);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: entryData, error: entryErr } = await (supabase as any)
+        .from("journal_entries")
+        .insert({ trade_id: tradeId, user_id: userId, entry_confluences: initialConfluences })
+        .select("id")
+        .single();
+      if (entryErr || !entryData) return null;
+      const entryId = (entryData as { id: string }).id;
+      setJournalEntryId(entryId);
+
+      return { tradeId, entryId };
+    })();
+
+    draftInitRef.current = p;
+    const result = await p;
+    draftInitRef.current = null;
+    return result;
+  }, [accountId, userId, instrument, direction, entry, planId, supabase]);
+
+  const handleEntryChecksChange = useCallback(async (sel: string[]) => {
+    setEntryChecks(sel);
+    const obj: Record<string, boolean> = {};
+    for (const s of sel) obj[s] = true;
+
+    if (draftTradeId && journalEntryId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any).from("journal_entries").update({ entry_confluences: obj }).eq("id", journalEntryId);
+      return;
+    }
+    await ensureDraftAndEntry(obj);
+  }, [draftTradeId, journalEntryId, ensureDraftAndEntry, supabase]);
+
+  // Keep the draft's instrument/direction current if the trader changes their
+  // mind mid-evaluation, instead of leaving a stale record behind.
+  useEffect(() => {
+    if (!draftTradeId) return;
+    (supabase as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .from("trades")
+      .update({ instrument, direction })
+      .eq("id", draftTradeId)
+      .eq("status", "draft")
+      .then(() => {});
+  }, [instrument, direction, draftTradeId, supabase]);
 
   const inlineRR = useMemo(() => {
     const e = parseFloat(entry) || 0;
@@ -240,6 +343,10 @@ export default function OrderForm({
           lots: parseFloat(lots) || undefined,
           grade,
           confirmed_warnings: guardianResult.discipline_warnings.map(w => w.type),
+          // Promotes the draft the trader was already checking entry criteria
+          // against instead of logging a second, duplicate row.
+          draft_id: draftTradeId ?? undefined,
+          plan_id: planId ?? undefined,
         }),
       });
 
@@ -252,12 +359,13 @@ export default function OrderForm({
       }
 
       setGuardianState("done");
+      setLoggedTradeId(data.trade?.id ?? draftTradeId ?? null);
       onTradeLogged?.();
     } catch {
       setGuardianState("modal");
       setSubmitError("Connection error. Try again.");
     }
-  }, [guardianResult, accountId, overrideConfirmed, entry, sl, tp, lots, instrument, direction, orderType, grade, onTradeLogged]);
+  }, [guardianResult, accountId, overrideConfirmed, entry, sl, tp, lots, instrument, direction, orderType, grade, onTradeLogged, draftTradeId, planId]);
 
   const handleStop = useCallback(() => {
     setGuardianState("idle");
@@ -275,6 +383,10 @@ export default function OrderForm({
     setGuardianResult(null);
     setOverrideConfirmed(false);
     setSubmitError(null);
+    setEntryChecks([]);
+    setDraftTradeId(null);
+    setJournalEntryId(null);
+    setLoggedTradeId(null);
   };
 
   const newsBlocked = newsBlock !== null;
@@ -323,13 +435,24 @@ export default function OrderForm({
               Open the order in MT5 now.
               <br />The webhook will mark it as open once the EA fires.
             </p>
-            <button
-              onClick={resetForm}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-2 border border-border text-xs text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
-            >
-              <RefreshCw className="size-3.5" />
-              New trade
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={resetForm}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-2 border border-border text-xs text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
+              >
+                <RefreshCw className="size-3.5" />
+                New trade
+              </button>
+              {loggedTradeId && (
+                <Link
+                  href={`/journal/${loggedTradeId}`}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent/10 border border-accent/30 text-xs text-accent hover:bg-accent/20 transition-colors"
+                >
+                  <ExternalLink className="size-3.5" />
+                  View in Journal
+                </Link>
+              )}
+            </div>
           </div>
         )}
 
@@ -385,6 +508,29 @@ export default function OrderForm({
                 ▼ SELL / SHORT
               </button>
             </div>
+
+            {/* Entry criteria — check the setup against your plan before you
+                size it. Checking a box saves immediately (draft trade). */}
+            {entryCriteria.length > 0 && (
+              <div className="bg-surface-2 rounded-lg p-3 space-y-2 border border-border">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-text-secondary">Entry criteria</p>
+                  {minConfluences != null && (
+                    <span className={cn(
+                      "text-[10px] font-mono",
+                      entryChecks.length >= minConfluences ? "text-profit" : "text-text-disabled"
+                    )}>
+                      {entryChecks.length}/{entryCriteria.length} · min {minConfluences}
+                    </span>
+                  )}
+                </div>
+                <ConfluenceChecklist
+                  selected={entryChecks}
+                  onChange={handleEntryChecksChange}
+                  items={entryCriteria}
+                />
+              </div>
+            )}
 
             {/* Order type */}
             <div className="flex gap-1 bg-surface-2 rounded-lg p-1">

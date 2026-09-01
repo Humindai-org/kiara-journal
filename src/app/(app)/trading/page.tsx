@@ -18,6 +18,7 @@ import PreMarketModal, {
 } from "@/components/trading/PreMarketModal";
 import { createClient } from "@/lib/supabase/client";
 import { isCrypto, instrumentsForClasses, FOREX_UNIVERSE, METALS_UNIVERSE, CRYPTO_UNIVERSE } from "@/components/trading/RiskCalculator";
+import { parseRuleArray } from "@/components/plan/planData";
 import { useAccountStore } from "@/store/account";
 
 type Plan = {
@@ -26,6 +27,8 @@ type Plan = {
   max_daily_loss: number;
   max_daily_profit: number | null;
   risk_per_trade_percent: number | null;
+  min_confluences: number | null;
+  entryCriteria: { id: string; label: string }[];
 };
 
 // Fallback for accounts created before the onboarding wizard existed (no
@@ -105,12 +108,18 @@ export default function TradingPage() {
 
     const { data: planData } = await supabase
       .from("plans")
-      .select("id, max_trades_per_day, max_daily_loss, max_daily_profit, risk_per_trade_percent")
+      .select("id, max_trades_per_day, max_daily_loss, max_daily_profit, risk_per_trade_percent, min_confluences, entry_criteria")
       .eq("user_id", user.id)
       .eq("is_active", true)
       .maybeSingle();
 
-    if (planData) setPlan(planData as Plan);
+    if (planData) {
+      const pd = planData as unknown as { entry_criteria: unknown } & Omit<Plan, "entryCriteria">;
+      setPlan({
+        ...pd,
+        entryCriteria: parseRuleArray(pd.entry_criteria).filter(r => r.enabled),
+      });
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: accData } = await (supabase as any)
@@ -123,13 +132,15 @@ export default function TradingPage() {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
 
-    // Count all trades opened today (pending + open + closed)
+    // Count all trades opened today (pending + open + closed) — drafts (still
+    // being evaluated in the pre-trade checklist) are excluded on purpose.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: rawTrades } = await (supabase as any)
       .from("trades")
       .select("net_pnl, close_time, status")
       .eq("account_id", activeAccountId)
-      .gte("open_time", todayStart.toISOString());
+      .gte("open_time", todayStart.toISOString())
+      .neq("status", "draft");
 
     const todayTrades = rawTrades as Array<{ net_pnl: number | null; close_time: string | null; status: string }> | null;
 
@@ -334,6 +345,9 @@ export default function TradingPage() {
                 balance={account?.current_balance ?? 0}
                 riskPercent={plan?.risk_per_trade_percent ?? undefined}
                 instruments={instruments}
+                planId={plan?.id}
+                entryCriteria={plan?.entryCriteria ?? []}
+                minConfluences={plan?.min_confluences ?? undefined}
               />
             </div>
 

@@ -100,6 +100,8 @@ export default function PreMarketModal({ onComplete, onDismiss }: Props) {
               .select("net_pnl, status, close_time")
               .eq("account_id", activeAccount.id)
               .gte("open_time", todayStart.toISOString())
+              // Drafts (setup still being evaluated) don't count toward today's trade cap.
+              .neq("status", "draft")
           : Promise.resolve({ data: null }),
         fetch("/api/news").catch(() => null),
       ]);

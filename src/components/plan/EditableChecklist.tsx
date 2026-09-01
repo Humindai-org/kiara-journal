@@ -9,11 +9,12 @@ import type { RuleItem } from "./planData";
 
 interface ItemRowProps {
   item: RuleItem;
-  // Edit mode: reflects item.enabled ("is this rule part of the plan").
-  // View mode: reflects today's session-local "did I do this" state —
-  // decoupled from item.enabled so ticking it off never rewrites the plan.
+  // Always reflects item.enabled ("is this rule part of the plan"). Checking
+  // off a specific rule for a specific trade happens on the pre-trade entry
+  // checklist (Trading page) or the trade review (Journal), not here — this
+  // list is a read-only reference of the plan outside edit mode.
   checked: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;
   onDelete: () => void;
   onEdit: (newLabel: string) => void;
   editMode: boolean;
@@ -72,28 +73,27 @@ function ItemRow({ item, checked, onToggle, onDelete, onEdit, editMode }: ItemRo
 
   return (
     <div className="flex items-start gap-2 py-1.5 rounded-lg hover:bg-surface-2 px-1 -mx-1 transition-colors">
-      <button
-        type="button"
-        onClick={onToggle}
-        className={cn(
-          "mt-0.5 shrink-0 transition-colors",
-          checked ? "text-accent" : "text-text-disabled"
-        )}
-        title={editMode ? (checked ? "Disable" : "Enable") : (checked ? "Mark not done" : "Mark done")}
-      >
-        {checked
-          ? <CheckSquare className="size-4" />
-          : <Square className="size-4" />}
-      </button>
+      {editMode ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className={cn("mt-0.5 shrink-0 transition-colors", checked ? "text-accent" : "text-text-disabled")}
+          title={checked ? "Disable" : "Enable"}
+        >
+          {checked ? <CheckSquare className="size-4" /> : <Square className="size-4" />}
+        </button>
+      ) : (
+        <span className={cn("mt-0.5 shrink-0", checked ? "text-accent" : "text-text-disabled")}>
+          {checked ? <CheckSquare className="size-4" /> : <Square className="size-4" />}
+        </span>
+      )}
 
       <span
         className={cn(
           "flex-1 text-xs leading-snug select-none",
-          // Edit mode: unchecked = excluded from the plan, shown crossed out.
-          // View mode: checked = completed today, shown crossed out — opposite polarity.
-          editMode
-            ? (checked ? "text-text-primary" : "text-text-disabled line-through")
-            : (checked ? "text-text-disabled line-through" : "text-text-primary")
+          // Unchecked (not part of the plan) is always shown crossed out,
+          // in both modes — this list no longer tracks "did I do this today".
+          checked ? "text-text-primary" : "text-text-disabled line-through"
         )}
       >
         {item.label}
@@ -140,22 +140,9 @@ export default function EditableChecklist({
 }: EditableChecklistProps) {
   const [newLabel, setNewLabel] = useState("");
   const addRef = useRef<HTMLInputElement>(null);
-  // View mode only: "did I do this" for the current visit — never written to
-  // the plan itself. Starts empty every time this list mounts (new plan
-  // selected, or navigating back to this tab), per how a checklist you run
-  // each session is supposed to behave.
-  const [checkedToday, setCheckedToday] = useState<Set<string>>(() => new Set());
 
   function toggle(id: string) {
     onChange(items.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item));
-  }
-
-  function toggleToday(id: string) {
-    setCheckedToday(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
   }
 
   function remove(id: string) {
@@ -187,8 +174,8 @@ export default function EditableChecklist({
         <ItemRow
           key={item.id}
           item={item}
-          checked={editMode ? item.enabled : checkedToday.has(item.id)}
-          onToggle={() => editMode ? toggle(item.id) : toggleToday(item.id)}
+          checked={item.enabled}
+          onToggle={editMode ? () => toggle(item.id) : undefined}
           onDelete={() => remove(item.id)}
           onEdit={(text) => edit(item.id, text)}
           editMode={editMode}
@@ -221,9 +208,8 @@ export default function EditableChecklist({
 
       {items.length > 0 && (
         <p className="text-[10px] text-text-disabled pt-1">
-          {editMode
-            ? `${enabledCount}/${items.length} active`
-            : `${checkedToday.size}/${items.length} completed`}
+          {enabledCount}/{items.length} active
+          {!editMode && " — check these off per trade from the Trading page or the trade's Journal entry"}
         </p>
       )}
     </div>

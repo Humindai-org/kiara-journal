@@ -117,7 +117,9 @@ export default function PositionsTable() {
       .limit(500);
 
     if (currentTab === "open") {
-      query = query.is("close_time", null);
+      // A draft (still being evaluated in the pre-trade checklist) also has no
+      // close_time — exclude it explicitly so it isn't shown as a real open position.
+      query = query.is("close_time", null).neq("status", "draft");
     } else {
       query = query.not("close_time", "is", null);
     }

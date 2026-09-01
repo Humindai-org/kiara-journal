@@ -33,7 +33,8 @@ export default function MonthlyPnLBars({ userId, accountId }: MonthlyPnLBarsProp
       .from("trades")
       .select("open_time, net_pnl")
       .eq("user_id", userId)
-      .gte("open_time", from);
+      .gte("open_time", from)
+      .neq("status", "draft");
     if (accountId) query = query.eq("account_id", accountId);
 
     query

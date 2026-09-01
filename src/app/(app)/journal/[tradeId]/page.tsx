@@ -284,6 +284,7 @@ export default function TradeDetailPage() {
         .select("id, net_pnl, return_r")
         .eq("user_id", uid)
         .eq("account_id", t ? (t as Trade).account_id : "")
+        .neq("status", "draft")
         .order("open_time", { ascending: true });
       if (all) {
         const rows = all as { id: string; net_pnl: number | null; return_r: number | null }[];
