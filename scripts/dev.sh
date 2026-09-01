@@ -15,6 +15,7 @@ ANTHROPIC=$(security find-generic-password -s "$SERVICE" -a "ANTHROPIC_API_KEY" 
          || security find-generic-password -s "$FUNDED" -a "ANTHROPIC_API_KEY" -w 2>/dev/null)
 
 NEWS=$(security find-generic-password -s "$SERVICE" -a "NEWS_API_KEY" -w 2>/dev/null || echo "")
+TWELVE_DATA=$(security find-generic-password -s "$SERVICE" -a "TWELVE_DATA_API_KEY" -w 2>/dev/null || echo "")
 
 # ── Validar obligatorias ──────────────────────────────────────
 missing=0
@@ -36,4 +37,5 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="$SUPABASE_ANON" \
 SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SRK" \
 ANTHROPIC_API_KEY="$ANTHROPIC" \
 NEWS_API_KEY="$NEWS" \
+TWELVE_DATA_API_KEY="$TWELVE_DATA" \
 bun run dev

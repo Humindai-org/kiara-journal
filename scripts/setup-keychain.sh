@@ -43,5 +43,16 @@ else
 fi
 unset key
 
+# ── Twelve Data (opcional — cotización en vivo del OrderForm) ──
+echo "TWELVE_DATA_API_KEY (opcional — gratis en https://twelvedata.com/pricing, sin tarjeta; deja en blanco para omitir):"
+read -s "key?"
+if [[ -n "$key" ]]; then
+  security add-generic-password -U -s "$SERVICE" -a "TWELVE_DATA_API_KEY" -w "$key"
+  echo "✓ TWELVE_DATA_API_KEY\n"
+else
+  echo "↩ Omitida — el precio de entrada se sigue pudiendo escribir a mano\n"
+fi
+unset key
+
 echo "Listo. Verifica con:"
 echo "  security find-generic-password -s \"$SERVICE\" -a \"SUPABASE_URL\" -w"

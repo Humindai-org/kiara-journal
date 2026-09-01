@@ -31,10 +31,17 @@ interface ConfluenceChecklistProps {
   // When provided, renders the linked plan's own rules instead, keyed by id.
   items?: ChecklistItem[];
   emptyLabel?: string;
+  // "grid" (default): 2-3 column grid with truncated labels — for wide
+  // layouts like the trade review page, where labels are short-ish.
+  // "list": single column, labels wrap instead of truncating — for narrow
+  // sidebars (e.g. the pre-trade order form) where a real plan rule's full
+  // text needs to stay readable.
+  layout?: "grid" | "list";
 }
 
-export default function ConfluenceChecklist({ selected, onChange, readonly, items, emptyLabel }: ConfluenceChecklistProps) {
+export default function ConfluenceChecklist({ selected, onChange, readonly, items, emptyLabel, layout = "grid" }: ConfluenceChecklistProps) {
   const options: ChecklistItem[] = items ?? CONFLUENCE_ITEMS.map(label => ({ id: label, label }));
+  const isList = layout === "list";
 
   function toggle(id: string) {
     if (readonly) return;
@@ -51,7 +58,7 @@ export default function ConfluenceChecklist({ selected, onChange, readonly, item
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className={isList ? "flex flex-col gap-1.5" : "grid grid-cols-2 sm:grid-cols-3 gap-2"}>
         {options.map(({ id, label }) => {
           const isSelected = selected.includes(id);
           return (
@@ -79,7 +86,8 @@ export default function ConfluenceChecklist({ selected, onChange, readonly, item
                 {isSelected && <Check className="size-3 text-white" strokeWidth={3} />}
               </span>
               <span className={cn(
-                "text-xs truncate",
+                "text-xs",
+                isList ? "leading-snug" : "truncate",
                 isSelected ? "text-text-primary" : "text-text-secondary"
               )}>
                 {label}

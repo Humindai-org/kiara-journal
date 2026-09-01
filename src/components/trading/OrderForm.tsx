@@ -528,6 +528,7 @@ export default function OrderForm({
                   selected={entryChecks}
                   onChange={handleEntryChecksChange}
                   items={entryCriteria}
+                  layout="list"
                 />
               </div>
             )}
