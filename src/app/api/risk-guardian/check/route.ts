@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   calcLots,
   calcRR,
+  calcDollarsAtDistance,
   riskForGrade,
   maxRiskPerTrade,
   DEFAULT_RISK_PERCENT,
@@ -32,6 +33,8 @@ interface RiskGuardianResponse {
     daily_cap_remaining: number;
     total_dd_remaining: number;
     risk_usd: number;
+    lots: number;
+    suggested_lots: number;
     rr: number;
     trades_today: number;
     open_trades: number;
@@ -54,6 +57,7 @@ export async function POST(req: NextRequest) {
     entry: number;
     sl: number;
     tp?: number;
+    lots?: number;
     grade: SetupGrade;
   };
 
@@ -137,8 +141,14 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Calculate trade risk ──────────────────────────────────────────────────
+  // The trader sets the SL and picks their own lot size — Risk Guardian's job
+  // is to check whether THAT combination stays inside the grade's budget, not
+  // to silently substitute a budget-derived size (lots falls back to that
+  // suggestion only when the client hasn't sent one, e.g. an older build).
   const budget = riskForGrade(balance, riskPercent, grade);
-  const { riskUsd } = calcLots(symbol, entry || sl, sl, budget);
+  const { lots: suggestedLots } = calcLots(symbol, entry || sl, sl, budget);
+  const lots = body.lots && body.lots > 0 ? body.lots : suggestedLots;
+  const riskUsd = calcDollarsAtDistance(symbol, entry || sl, sl, lots);
 
   // Max risk per trade = the account's A+ budget (balance × risk %)
   const maxAllowedRisk = maxRiskPerTrade(balance, riskPercent);
@@ -151,16 +161,17 @@ export async function POST(req: NextRequest) {
   // ── Run Risk Guardian checks ──────────────────────────────────────────────
   const checks: Check[] = [];
 
-  // Check A — Trade risk
+  // Check A — Trade risk (checks the trader's own lot size against the budget,
+  // not a recalculated "correct" one — see the comment above riskUsd)
   if (riskUsd > maxAllowedRisk) {
     checks.push({ id: "A", label: "Trade risk", result: "STOP",
-      message: `$${riskUsd} exceeds your max of $${maxAllowedRisk} per trade` });
+      message: `${lots} lots risks $${riskUsd} — exceeds your max of $${maxAllowedRisk} per trade (try ~${suggestedLots} lots)` });
   } else if (riskUsd > maxAllowedRisk * 0.8) {
     checks.push({ id: "A", label: "Trade risk", result: "CAUTION",
-      message: `$${riskUsd} is ${Math.round(riskUsd / maxAllowedRisk * 100)}% of your $${maxAllowedRisk} limit` });
+      message: `${lots} lots risks $${riskUsd}, ${Math.round(riskUsd / maxAllowedRisk * 100)}% of your $${maxAllowedRisk} limit` });
   } else {
     checks.push({ id: "A", label: "Trade risk", result: "PASS",
-      message: `$${riskUsd} of $${maxAllowedRisk} allowed` });
+      message: `${lots} lots risks $${riskUsd} of $${maxAllowedRisk} allowed` });
   }
 
   // Check B — Daily stop cap (personal)
@@ -261,6 +272,8 @@ export async function POST(req: NextRequest) {
       daily_cap_remaining: dailyCapRemaining,
       total_dd_remaining: totalDdRemaining,
       risk_usd: riskUsd,
+      lots,
+      suggested_lots: suggestedLots,
       rr,
       trades_today: tradeCountToday,
       open_trades: openTrades.length,

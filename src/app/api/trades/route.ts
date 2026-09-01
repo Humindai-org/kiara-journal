@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   calcLots,
   calcRR,
+  calcDollarsAtDistance,
   riskForGrade,
   DEFAULT_RISK_PERCENT,
   type SetupGrade,
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
     entry: number;
     sl: number;
     tp?: number;
+    lots?: number;
     grade: SetupGrade;
     confirmed_warnings?: string[];
   };
@@ -64,7 +66,11 @@ export async function POST(req: NextRequest) {
   const planRiskPercent: number = plan?.risk_per_trade_percent ?? DEFAULT_RISK_PERCENT;
   const budget = riskForGrade(account.current_balance ?? 0, planRiskPercent, grade);
 
-  const { lots, riskUsd } = calcLots(symbol, entry, sl, budget);
+  // The trader sets the SL and picks their own lot size (Risk Guardian's job
+  // is to flag it if it exceeds the budget, not to dictate it) — the
+  // budget-derived size is only a fallback for older clients that don't send one.
+  const lots = body.lots && body.lots > 0 ? body.lots : calcLots(symbol, entry, sl, budget).lots;
+  const riskUsd = calcDollarsAtDistance(symbol, entry, sl, lots);
   const rr = tp ? calcRR(entry, sl, tp) : 0;
 
   // What this specific trade actually risks, as a % of balance (stored on the row)

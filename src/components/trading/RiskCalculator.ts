@@ -136,6 +136,23 @@ export function isCrypto(instrument: string): boolean {
 }
 
 /**
+ * Converts the app's plain instrument code ("EURUSD", "XAUUSD", "BTCUSDT")
+ * into the "BASE/QUOTE" format quote providers (Twelve Data included) expect.
+ * Forex/metals are always 6 letters, so a straight 3/3 split covers both —
+ * crypto needs the real base symbol first since bases and quotes vary in length.
+ */
+export function toQuoteSymbol(instrument: string): string {
+  const inst = instrument.toUpperCase();
+  if (isCrypto(inst)) {
+    const clean = inst.replace(/[^A-Z]/g, "");
+    const base = CRYPTO_BASES.find((b) => clean.startsWith(b));
+    if (base) return `${base}/${clean.slice(base.length)}`;
+  }
+  if (inst.length === 6) return `${inst.slice(0, 3)}/${inst.slice(3)}`;
+  return inst;
+}
+
+/**
  * Risk budget in account currency for a setup of this grade.
  * Derived from the account balance and the plan's risk-per-trade percentage —
  * never a fixed dollar amount, so it scales from a $400 account to a $100K one.
@@ -170,6 +187,23 @@ export function getPips(instrument: string, price1: number, price2: number): num
   if (inst.includes("JPY")) return diff * 100;
   if (inst === "XAUUSD") return diff * 10;
   return diff * 10000;
+}
+
+/**
+ * Inverse of calcLots: the actual $ exposure for a trader-chosen lot size, so
+ * a manually-picked position size can be checked against the risk budget
+ * instead of the app always dictating lots from the budget.
+ */
+export function calcDollarsAtDistance(
+  instrument: string,
+  price1: number,
+  price2: number,
+  lots: number,
+): number {
+  if (!(lots > 0)) return 0;
+  const pips = getPips(instrument, price1, price2);
+  const pipValue = getPipValue(instrument);
+  return Math.round(pips * pipValue * lots * 100) / 100;
 }
 
 export function calcLots(

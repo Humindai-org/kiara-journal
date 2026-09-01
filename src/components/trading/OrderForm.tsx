@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Lock, AlertTriangle, Loader2, RefreshCw, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   calcLots,
   calcRR,
+  calcDollarsAtDistance,
+  getPips,
   getGradeColor,
   riskForGrade,
   hasPreciseSizing,
@@ -52,10 +54,16 @@ export default function OrderForm({
   const [entry, setEntry] = useState("");
   const [sl, setSl] = useState("");
   const [tp, setTp] = useState("");
+  // null = trader hasn't touched the Lots field yet, so it shows the
+  // recommendation live; any manual edit (even clearing it) switches this to
+  // a plain string and the recommendation stops overwriting it.
+  const [userLots, setUserLots] = useState<string | null>(null);
   const [grade, setGrade] = useState<SetupGrade>("A");
 
-  const [calc, setCalc] = useState<{ lots: number; riskUsd: number; slPips: number; rr: number } | null>(null);
-  const [inlineRR, setInlineRR] = useState<number | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  // Ref, not state — read inside the polling interval without needing it as
+  // a dependency, so a focus/blur doesn't restart the poll timer.
+  const entryFocusedRef = useRef(false);
 
   // Guardian modal flow
   const [guardianState, setGuardianState] = useState<"idle" | "checking" | "modal" | "submitting" | "done">("idle");
@@ -71,31 +79,71 @@ export default function OrderForm({
     onSymbolChange?.(instrument);
   }, [instrument, onSymbolChange]);
 
+  // MARKET orders execute at whatever the market is doing right now, so the
+  // "entry" field auto-fills from a live quote instead of being typed in —
+  // pauses while the field is focused so it doesn't fight a manual override.
   useEffect(() => {
+    if (orderType !== "MARKET") { setQuoteError(null); return; }
+    let cancelled = false;
+    async function fetchPrice() {
+      try {
+        const res = await fetch(`/api/quote?symbol=${encodeURIComponent(instrument)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.price) {
+          setQuoteError(null);
+          if (!entryFocusedRef.current) setEntry(String(data.price));
+        } else {
+          setQuoteError(data.error ?? "Quote unavailable");
+        }
+      } catch {
+        if (!cancelled) setQuoteError("Quote feed unreachable");
+      }
+    }
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [orderType, instrument]);
+
+  const inlineRR = useMemo(() => {
     const e = parseFloat(entry) || 0;
     const s = parseFloat(sl);
     const t = parseFloat(tp);
+    return (s > 0 && t > 0 && e > 0) ? calcRR(e, s, t) : null;
+  }, [entry, sl, tp]);
 
-    if (s > 0 && t > 0 && e > 0) {
-      setInlineRR(calcRR(e, s, t));
-    } else {
-      setInlineRR(null);
-    }
-
+  // Suggested lots depend only on SL distance + the grade's risk budget — never
+  // on the trader's own lots input, so this can't create a feedback loop with
+  // the "effective lots" derivation below.
+  const suggestion = useMemo(() => {
+    const e = parseFloat(entry) || 0;
+    const s = parseFloat(sl);
+    if (!(s > 0) || grade === "C") return null;
+    const refPrice = e > 0 ? e : s; // SL-only preview falls back to SL as the reference point
     const budget = riskForGrade(balance, riskPercent, grade);
+    const { lots: suggestedLots, slPips } = calcLots(instrument, refPrice, s, budget);
+    return { refPrice, budget, suggestedLots, slPips };
+  }, [entry, sl, grade, instrument, balance, riskPercent]);
 
-    if (e > 0 && s > 0 && grade !== "C") {
-      const { lots, riskUsd, slPips } = calcLots(instrument, e, s, budget);
-      const rr = t > 0 ? calcRR(e, s, t) : 0;
-      setCalc({ lots, riskUsd, slPips, rr });
-    } else if (s > 0 && grade !== "C") {
-      // SL without entry — show risk only
-      const { lots, riskUsd, slPips } = calcLots(instrument, s, s, budget);
-      setCalc({ lots, riskUsd, slPips, rr: 0 });
-    } else {
-      setCalc(null);
-    }
-  }, [entry, sl, tp, grade, instrument, orderType, balance, riskPercent]);
+  // Only worth recommending a size once the trade clears this plan's own
+  // minimum R:R (1:2) — a trade that misses it shouldn't be sized encouragingly.
+  const recommendedLots = suggestion && inlineRR != null && inlineRR >= 2 && suggestion.suggestedLots > 0
+    ? suggestion.suggestedLots.toFixed(2)
+    : "";
+  const lots = userLots ?? recommendedLots;
+
+  const calc = useMemo(() => {
+    if (!suggestion) return null;
+    const t = parseFloat(tp) || 0;
+    const enteredLots = parseFloat(lots) || 0;
+    const tpPips = t > 0 ? getPips(instrument, suggestion.refPrice, t) : 0;
+    const riskUsd = calcDollarsAtDistance(instrument, suggestion.refPrice, parseFloat(sl), enteredLots);
+    const rewardUsd = t > 0 ? calcDollarsAtDistance(instrument, suggestion.refPrice, t, enteredLots) : 0;
+    return {
+      suggestedLots: suggestion.suggestedLots, budget: suggestion.budget, slPips: suggestion.slPips,
+      tpPips, riskUsd, rewardUsd, rr: inlineRR ?? 0,
+    };
+  }, [suggestion, sl, tp, lots, instrument, inlineRR]);
 
   // Reset guardian when any form input changes
   useEffect(() => {
@@ -106,7 +154,7 @@ export default function OrderForm({
       setSubmitError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instrument, direction, entry, sl, tp, grade, orderType]);
+  }, [instrument, direction, entry, sl, tp, lots, grade, orderType]);
 
   const runRiskCheck = useCallback(async () => {
     if (!accountId) {
@@ -117,10 +165,15 @@ export default function OrderForm({
       setSubmitError("Stop Loss is required.");
       return;
     }
+    if (!lots || parseFloat(lots) <= 0) {
+      setSubmitError("Lot size is required.");
+      return;
+    }
 
     const entryValue = parseFloat(entry) || 0;
     const slValue = parseFloat(sl);
     const tpValue = parseFloat(tp) || 0;
+    const lotsValue = parseFloat(lots);
 
     if ((orderType === "LIMIT" || orderType === "STOP") && !entryValue) {
       setSubmitError("Entry price required for Limit/Stop orders.");
@@ -141,6 +194,7 @@ export default function OrderForm({
           entry: entryValue || 0,  // send 0 for MARKET; API detects no real entry
           sl: slValue,
           tp: tpValue > 0 ? tpValue : undefined,
+          lots: lotsValue,
           grade,
         }),
       });
@@ -159,7 +213,7 @@ export default function OrderForm({
       setGuardianState("idle");
       setSubmitError("Connection error — Risk Guardian unavailable.");
     }
-  }, [accountId, instrument, direction, entry, sl, tp, grade, orderType]);
+  }, [accountId, instrument, direction, entry, sl, tp, lots, grade, orderType]);
 
   const handleOverride = useCallback(async () => {
     if (!guardianResult || !accountId) return;
@@ -183,6 +237,7 @@ export default function OrderForm({
           entry: entryValue,
           sl: slValue,
           tp: tpValue,
+          lots: parseFloat(lots) || undefined,
           grade,
           confirmed_warnings: guardianResult.discipline_warnings.map(w => w.type),
         }),
@@ -202,7 +257,7 @@ export default function OrderForm({
       setGuardianState("modal");
       setSubmitError("Connection error. Try again.");
     }
-  }, [guardianResult, accountId, overrideConfirmed, entry, sl, tp, instrument, direction, orderType, grade, onTradeLogged]);
+  }, [guardianResult, accountId, overrideConfirmed, entry, sl, tp, lots, instrument, direction, orderType, grade, onTradeLogged]);
 
   const handleStop = useCallback(() => {
     setGuardianState("idle");
@@ -215,6 +270,7 @@ export default function OrderForm({
     setEntry("");
     setSl("");
     setTp("");
+    setUserLots(null);
     setGuardianState("idle");
     setGuardianResult(null);
     setOverrideConfirmed(false);
@@ -224,6 +280,7 @@ export default function OrderForm({
   const newsBlocked = newsBlock !== null;
   const gradeBlocked = grade === "C";
   const noSl = !sl;
+  const noLots = !lots || parseFloat(lots) <= 0;
   const hardBlocked = newsBlocked || gradeBlocked;
 
   return (
@@ -357,9 +414,14 @@ export default function OrderForm({
                 <input
                   type="number" step="0.00001" value={entry}
                   onChange={(e) => setEntry(e.target.value)}
+                  onFocus={() => { entryFocusedRef.current = true; }}
+                  onBlur={() => { entryFocusedRef.current = false; }}
                   placeholder="0.00000"
                   className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
                 />
+                {orderType === "MARKET" && quoteError && (
+                  <p className="text-[10px] text-warning mt-1">{quoteError} — enter the price manually.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -383,18 +445,42 @@ export default function OrderForm({
                 </div>
               </div>
 
-              {/* Inline R:R preview */}
+              {/* Lots — you set this; Risk Guardian checks it against the grade's budget below */}
+              <div>
+                <label className="text-xs text-text-secondary mb-1 block">Lots</label>
+                <input
+                  type="number" step="0.01" value={lots}
+                  onChange={(e) => setUserLots(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                />
+                {calc && calc.suggestedLots > 0 && parseFloat(lots || "0") !== calc.suggestedLots && (
+                  <p className="text-[10px] text-text-disabled mt-1">
+                    Suggested for grade {grade}: {calc.suggestedLots.toFixed(2)} lots (needs R:R ≥ 1:2 to auto-fill)
+                  </p>
+                )}
+              </div>
+
+              {/* Inline R:R preview — shows the actual $ behind the ratio, not just the number */}
               {inlineRR !== null && (
                 <div className={cn(
-                  "flex items-center justify-between px-3 py-1.5 rounded-lg border text-xs font-mono font-medium",
+                  "px-3 py-1.5 rounded-lg border text-xs font-mono font-medium space-y-1",
                   inlineRR >= 2
                     ? "border-profit/30 bg-profit/5 text-profit"
                     : inlineRR >= 1
                     ? "border-warning/30 bg-warning/5 text-warning"
                     : "border-loss/30 bg-loss/5 text-loss"
                 )}>
-                  <span className="text-text-secondary font-sans font-normal">R:R</span>
-                  <span>1:{inlineRR}R {inlineRR < 2 && "⚠ min 1:2"}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary font-sans font-normal">R:R</span>
+                    <span>1:{inlineRR}R {inlineRR < 2 && "⚠ min 1:2"}</span>
+                  </div>
+                  {calc && parseFloat(lots || "0") > 0 && (
+                    <div className="flex items-center justify-between text-[10px] font-sans font-normal text-text-secondary">
+                      <span>risking ${calc.riskUsd} ({calc.slPips.toFixed(1)} pips)</span>
+                      <span>to make ${calc.rewardUsd} ({calc.tpPips.toFixed(1)} pips)</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -403,17 +489,33 @@ export default function OrderForm({
             {calc && (
               <div className="bg-surface-2 rounded-lg p-3 space-y-1.5 border border-border">
                 <div className="flex justify-between">
-                  <span className="text-xs text-text-secondary">Lots</span>
-                  <span className="text-sm font-mono text-text-primary">{calc.lots.toFixed(2)}</span>
+                  <span className="text-xs text-text-secondary">Risk (this trade)</span>
+                  <span className={cn(
+                    "text-sm font-mono font-semibold",
+                    calc.riskUsd > calc.budget ? "text-loss" : "text-warning"
+                  )}>
+                    ${calc.riskUsd}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-xs text-text-secondary">Risk</span>
-                  <span className="text-sm font-mono text-warning">${calc.riskUsd}</span>
+                  <span className="text-xs text-text-secondary">Budget (grade {grade})</span>
+                  <span className="text-sm font-mono text-text-primary">${calc.budget}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-text-secondary">SL Pips</span>
                   <span className="text-sm font-mono text-text-primary">{calc.slPips.toFixed(1)}</span>
                 </div>
+                {calc.tpPips > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-xs text-text-secondary">TP Pips</span>
+                    <span className="text-sm font-mono text-text-primary">{calc.tpPips.toFixed(1)}</span>
+                  </div>
+                )}
+                {calc.riskUsd > calc.budget && (
+                  <p className="text-[10px] text-loss pt-1 border-t border-border">
+                    ⚠ This lot size risks more than grade {grade}&apos;s ${calc.budget} budget.
+                  </p>
+                )}
                 {!hasPreciseSizing(instrument) && (
                   <p className="text-[10px] text-warning pt-1 border-t border-border">
                     ≈ Approximate sizing — {instrument} isn&apos;t in the verified pip table. Double-check lot size manually.
@@ -433,7 +535,7 @@ export default function OrderForm({
             {/* Validate button */}
             <button
               onClick={runRiskCheck}
-              disabled={hardBlocked || noSl || gradeBlocked || guardianState === "checking"}
+              disabled={hardBlocked || noSl || noLots || gradeBlocked || guardianState === "checking"}
               className={cn(
                 "w-full py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2",
                 direction === "LONG"
@@ -449,6 +551,8 @@ export default function OrderForm({
                 ? "Grade C — no trading"
                 : noSl
                 ? "Set Stop Loss first"
+                : noLots
+                ? "Set lot size first"
                 : guardianState === "checking"
                 ? "Validating..."
                 : `Validate ${direction} · ${instrument}`}

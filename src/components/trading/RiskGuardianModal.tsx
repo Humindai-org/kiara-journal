@@ -26,6 +26,8 @@ export interface GuardianResult {
     daily_cap_remaining: number;
     total_dd_remaining: number;
     risk_usd: number;
+    lots: number;
+    suggested_lots: number;
     rr: number;
     trades_today: number;
     open_trades: number;
@@ -116,7 +118,16 @@ export default function RiskGuardianModal({
         </div>
 
         {/* Stats strip */}
-        <div className="grid grid-cols-3 divide-x divide-border border-b border-border bg-surface-2">
+        <div className="grid grid-cols-4 divide-x divide-border border-b border-border bg-surface-2">
+          <div className="px-3 py-2 text-center">
+            <p className="text-[11px] text-text-secondary">Lots</p>
+            <p className="text-sm font-mono font-medium text-text-primary">
+              {debug.lots}
+              {debug.suggested_lots > 0 && Math.abs(debug.lots - debug.suggested_lots) > 0.001 && (
+                <span className="text-[10px] text-text-disabled"> (~{debug.suggested_lots})</span>
+              )}
+            </p>
+          </div>
           <div className="px-3 py-2 text-center">
             <p className="text-[11px] text-text-secondary">Trades today</p>
             <p className="text-sm font-mono font-medium text-text-primary">{debug.trades_today}</p>

@@ -104,6 +104,7 @@ function fmtRecordTime(s: number) {
 
 type Trade = {
   id: string;
+  account_id: string;
   instrument: string;
   direction: "LONG" | "SHORT";
   lot_size: number;
@@ -276,11 +277,13 @@ export default function TradeDetailPage() {
         })));
       }
 
-      // Adjacent trades + global stats
+      // Adjacent trades + account stats — scoped to the trade's own account so
+      // Previous/Next and the stats bar don't blend numbers across accounts.
       const { data: all } = await supabase
         .from("trades")
         .select("id, net_pnl, return_r")
         .eq("user_id", uid)
+        .eq("account_id", t ? (t as Trade).account_id : "")
         .order("open_time", { ascending: true });
       if (all) {
         const rows = all as { id: string; net_pnl: number | null; return_r: number | null }[];
@@ -620,10 +623,13 @@ export default function TradeDetailPage() {
           {globalStats && (
             <div className="hidden lg:flex items-center bg-surface border border-border rounded-xl px-4 py-2 gap-4">
               {[
-                { label: "P&L", value: fmtMoney(globalStats.pnl), color: globalStats.pnl >= 0 ? "text-profit" : "text-loss" },
-                { label: "R Multiple", value: displayR != null ? `${displayR >= 0 ? "+" : ""}${displayR.toFixed(2)}R` : "—", color: displayR != null && displayR >= 0 ? "text-profit" : "text-loss" },
-                { label: "Win Rate", value: globalStats.winRate != null ? `${globalStats.winRate}%` : "—", color: "text-text-primary" },
-                { label: "Expectancy", value: globalStats.expectancy != null ? fmtMoney(globalStats.expectancy) : "—", color: globalStats.expectancy != null && globalStats.expectancy >= 0 ? "text-profit" : "text-loss" },
+                // These three are account-wide history, not this trade — label them
+                // that way so a fresh, unclosed trade doesn't look like it already
+                // lost money. R Multiple (below) is the only one scoped to this trade.
+                { label: "Account P&L", value: fmtMoney(globalStats.pnl), color: globalStats.pnl >= 0 ? "text-profit" : "text-loss" },
+                { label: "This Trade R", value: displayR != null ? `${displayR >= 0 ? "+" : ""}${displayR.toFixed(2)}R` : "—", color: displayR != null && displayR >= 0 ? "text-profit" : "text-loss" },
+                { label: "Account Win Rate", value: globalStats.winRate != null ? `${globalStats.winRate}%` : "—", color: "text-text-primary" },
+                { label: "Account Expectancy", value: globalStats.expectancy != null ? fmtMoney(globalStats.expectancy) : "—", color: globalStats.expectancy != null && globalStats.expectancy >= 0 ? "text-profit" : "text-loss" },
               ].map(({ label, value, color }, i) => (
                 <div key={label} className={cn("flex flex-col px-2", i > 0 && "border-l border-border pl-4")}>
                   <span className="text-[10px] text-text-disabled">{label}</span>

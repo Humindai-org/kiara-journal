@@ -158,7 +158,11 @@ function TradeListModal({ detail, onClose }: { detail: TradeListDetail; onClose:
 
 function fmtUsd(n: number, sign = false) {
   const s = sign && n > 0 ? "+" : "";
-  return `${s}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const isWhole = Math.round(Math.abs(n) * 100) % 100 === 0;
+  return `${s}${n.toLocaleString("en-US", {
+    minimumFractionDigits: isWhole ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 // Long balances ($200,000.00) don't fit at text-2xl inside a 7-up grid — scale
@@ -182,7 +186,10 @@ function KpiCard({ label, value, sub, color, icon: Icon, onClick }: {
         <p className="text-xs text-text-secondary truncate">{label}</p>
         <Icon className="size-4 text-text-disabled shrink-0" />
       </div>
-      <p className={cn("font-mono font-semibold tabular-nums whitespace-nowrap", kpiValueSize(value), color ?? "text-text-primary")}>
+      <p
+        className={cn("font-mono font-semibold tabular-nums truncate", kpiValueSize(value), color ?? "text-text-primary")}
+        title={value}
+      >
         {value}
       </p>
       {sub && <p className="text-[11px] text-text-disabled mt-1 truncate">{sub}</p>}

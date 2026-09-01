@@ -10,10 +10,12 @@ SUPABASE_SRK=$(security find-generic-password -s "$SERVICE" -a "SUPABASE_SERVICE
 ANTHROPIC=$(security find-generic-password -s "$SERVICE" -a "ANTHROPIC_API_KEY" -w 2>/dev/null \
          || security find-generic-password -s "$FUNDED" -a "ANTHROPIC_API_KEY" -w 2>/dev/null)
 NEWS=$(security find-generic-password -s "$SERVICE" -a "NEWS_API_KEY" -w 2>/dev/null || echo "")
+TWELVE_DATA=$(security find-generic-password -s "$SERVICE" -a "TWELVE_DATA_API_KEY" -w 2>/dev/null || echo "")
 
 NEXT_PUBLIC_SUPABASE_URL="$SUPABASE_URL" \
 NEXT_PUBLIC_SUPABASE_ANON_KEY="$SUPABASE_ANON" \
 SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SRK" \
 ANTHROPIC_API_KEY="$ANTHROPIC" \
 NEWS_API_KEY="$NEWS" \
+TWELVE_DATA_API_KEY="$TWELVE_DATA" \
 bun run build
